@@ -245,6 +245,94 @@ button {
   line-height: 1.65;
 }
 
+.connection-status {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: -16px 0 18px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #b89b7d;
+}
+
+.status-listening {
+  background: #d4702a;
+  box-shadow: 0 0 0 4px rgba(212, 112, 42, 0.14);
+}
+
+.transcript {
+  position: relative;
+  z-index: 1;
+  width: min(560px, 100%);
+  min-height: 24px;
+  margin: -10px 0 20px;
+  color: var(--text-dark);
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.transcript-interim {
+  color: var(--text-muted);
+}
+
+.transcript-error {
+  color: #a64d3c;
+}
+
+.assistant-response {
+  margin-top: 8px;
+  color: var(--text-mid);
+}
+
+.text-input-form {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: min(520px, 100%);
+  gap: 8px;
+  margin-bottom: 22px;
+}
+
+.text-input-form input {
+  min-width: 0;
+  flex: 1;
+  padding: 10px 13px;
+  border: 1px solid var(--qa-border);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.7);
+  color: var(--text-dark);
+  font: inherit;
+  outline: none;
+}
+
+.text-input-form input:focus {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 3px rgba(176,125,62,0.12);
+}
+
+.text-input-form button {
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--amber);
+  color: white;
+  font: inherit;
+}
+
+.text-input-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 /* ── Mic button ── */
 .mic-container {
   position: relative;

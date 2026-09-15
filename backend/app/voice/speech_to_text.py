@@ -4,6 +4,10 @@ import asyncio
 import websockets
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from dotenv import load_dotenv
+from uuid import uuid4
+
+from app.core.context import WorkingContext
+from app.router.intent_router import conversation_history, process_context
 
 load_dotenv()
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
@@ -13,6 +17,12 @@ stt_router = APIRouter()
 @stt_router.websocket("/listen")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    session_id = websocket.query_params.get("session_id") or str(uuid4())
+
+    if not DEEPGRAM_API_KEY:
+        await websocket.send_json({"error": "Voice service is not configured. Add DEEPGRAM_API_KEY to the backend environment."})
+        await websocket.close(code=1011)
+        return
     
     # You might want to adjust parameters like encoding, sample_rate based on frontend
     deepgram_url = "wss://api.deepgram.com/v1/listen?encoding=linear16&sample_rate=16000&channels=1"
@@ -45,6 +55,19 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "transcript": transcript,
                                 "is_final": is_final
                             })
+                            if is_final:
+                                context = WorkingContext(
+                                    session_id=session_id,
+                                    transcript=transcript,
+                                    input_type="voice",
+                                    conversation_history=conversation_history(session_id),
+                                )
+                                result = await process_context(context)
+                                await ws.send_json({
+                                    "transcript": transcript,
+                                    "is_final": True,
+                                    "processing": result.model_dump(mode="json"),
+                                })
                 except Exception as e:
                     print(f"Error receiving from Deepgram: {e}")
 
@@ -54,4 +77,8 @@ async def websocket_endpoint(websocket: WebSocket):
             )
     except Exception as e:
         print(f"Deepgram connection error: {e}")
-        await websocket.close()
+        try:
+            await websocket.send_json({"error": "Could not connect to the transcription service."})
+            await websocket.close(code=1011)
+        except Exception:
+            pass

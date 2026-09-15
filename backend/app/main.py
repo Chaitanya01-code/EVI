@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.chat import chat_router
 from app.voice.speech_to_text import stt_router
 
 
@@ -15,6 +16,7 @@ app.add_middleware(
 )
 
 app.include_router(stt_router, prefix="/api/voice")
+app.include_router(chat_router, prefix="/api")
 
 @app.get("/")
 def read_root():

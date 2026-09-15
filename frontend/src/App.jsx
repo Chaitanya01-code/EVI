@@ -1,5 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './App.css';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+function toPcm16(input, inputSampleRate) {
+  const sampleRateRatio = inputSampleRate / 16000;
+  const outputLength = Math.max(1, Math.round(input.length / sampleRateRatio));
+  const output = new ArrayBuffer(outputLength * 2);
+  const view = new DataView(output);
+
+  for (let outputIndex = 0; outputIndex < outputLength; outputIndex += 1) {
+    const inputIndex = Math.min(input.length - 1, Math.floor(outputIndex * sampleRateRatio));
+    const sample = Math.max(-1, Math.min(1, input[inputIndex]));
+    view.setInt16(outputIndex * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+  }
+
+  return output;
+}
 
 const MicIcon = () => (
   <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
@@ -56,11 +73,161 @@ const quickActions = [
 function App() {
   const [listening, setListening] = useState(false);
   const [pulseAnim, setPulseAnim] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [interimTranscript, setInterimTranscript] = useState('');
+  const [connectionStatus, setConnectionStatus] = useState('Connecting to EVI...');
+  const [error, setError] = useState('');
+  const [assistantResponse, setAssistantResponse] = useState('');
+  const [textInput, setTextInput] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const socketRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const audioSourceRef = useRef(null);
+  const processorRef = useRef(null);
 
-  const toggleMic = () => {
-    setListening(prev => !prev);
+  useEffect(() => {
+    let active = true;
+
+    fetch(`${API_BASE_URL}/`)
+      .then(response => {
+        if (!response.ok) throw new Error('Backend returned an error');
+        return response.json();
+      })
+      .then(() => {
+        if (active) setConnectionStatus('Ready');
+      })
+      .catch(() => {
+        if (active) setConnectionStatus('Backend unavailable');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => () => stopListening(), []);
+
+  const stopListening = () => {
+    processorRef.current?.disconnect();
+    audioSourceRef.current?.disconnect();
+    mediaStreamRef.current?.getTracks().forEach(track => track.stop());
+    audioContextRef.current?.close();
+    socketRef.current?.close();
+    processorRef.current = null;
+    audioSourceRef.current = null;
+    mediaStreamRef.current = null;
+    audioContextRef.current = null;
+    socketRef.current = null;
+    setListening(false);
+  };
+
+  const startListening = async () => {
+    setError('');
+    setInterimTranscript('');
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('Microphone access is not supported in this browser.');
+      return;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const websocketUrl = `${API_BASE_URL.replace(/^http/, 'ws')}/api/voice/listen?session_id=${encodeURIComponent(sessionId)}`;
+    const socket = new WebSocket(websocketUrl);
+    const audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(stream);
+    const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+    socket.onopen = () => {
+      setListening(true);
+      setConnectionStatus('Listening');
+      source.connect(processor);
+      processor.connect(audioContext.destination);
+    };
+    socket.onmessage = event => {
+      const message = JSON.parse(event.data);
+      if (message.error) {
+        setError(message.error);
+        stopListening();
+      } else if (message.processing) {
+        setProcessing(false);
+        setAssistantResponse(message.processing.response);
+        setConnectionStatus('Ready');
+      } else if (message.is_final) {
+        setTranscript(previous => `${previous} ${message.transcript}`.trim());
+        setInterimTranscript('');
+        setProcessing(true);
+      } else {
+        setInterimTranscript(message.transcript);
+      }
+    };
+    socket.onerror = () => {
+      setError('Could not connect to the voice service.');
+      stopListening();
+    };
+    socket.onclose = () => {
+      if (socketRef.current === socket) {
+        setConnectionStatus('Ready');
+        stopListening();
+      }
+    };
+    processor.onaudioprocess = event => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(toPcm16(event.inputBuffer.getChannelData(0), audioContext.sampleRate));
+      }
+    };
+
+    socketRef.current = socket;
+    audioContextRef.current = audioContext;
+    mediaStreamRef.current = stream;
+    audioSourceRef.current = source;
+    processorRef.current = processor;
+  };
+
+  const submitText = async event => {
+    event.preventDefault();
+    const message = textInput.trim();
+    if (!message || processing) return;
+    setError('');
+    setProcessing(true);
+    setTranscript(message);
+    setInterimTranscript('');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: message, session_id: sessionId, input_type: 'text' }),
+      });
+      if (!response.ok) throw new Error('Request failed');
+      const result = await response.json();
+      setAssistantResponse(result.response);
+      setConnectionStatus('Ready');
+      setTextInput('');
+    } catch {
+      setError('Could not process that request.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const toggleMic = async () => {
     setPulseAnim(true);
     setTimeout(() => setPulseAnim(false), 600);
+    if (listening) {
+      stopListening();
+      setConnectionStatus('Ready');
+      return;
+    }
+
+    try {
+      await startListening();
+    } catch (startError) {
+      stopListening();
+      setError(startError.name === 'NotAllowedError'
+        ? 'Microphone permission was denied.'
+        : 'Could not start the microphone.');
+    }
   };
 
   return (
@@ -118,6 +285,33 @@ function App() {
             just say what you need or click the mic.
           </p>
         </div>
+
+        <div className="connection-status" role="status">
+          <span className={`status-dot ${connectionStatus === 'Listening' ? 'status-listening' : ''}`} />
+          {connectionStatus}
+        </div>
+
+        {(transcript || interimTranscript || error) && (
+          <div className="transcript" aria-live="polite">
+            {error ? <span className="transcript-error">{error}</span> : (
+              <>
+                <span>{transcript} </span>
+                <span className="transcript-interim">{interimTranscript}</span>
+                {assistantResponse && <p className="assistant-response">{assistantResponse}</p>}
+              </>
+            )}
+          </div>
+        )}
+
+        <form className="text-input-form" onSubmit={submitText}>
+          <input
+            value={textInput}
+            onChange={event => setTextInput(event.target.value)}
+            placeholder="Type a message to EVI"
+            aria-label="Message EVI"
+          />
+          <button type="submit" disabled={processing || !textInput.trim()}>Send</button>
+        </form>
 
         {/* Mic button */}
         <div className="mic-container">

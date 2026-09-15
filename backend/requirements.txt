@@ -1,3 +1,7 @@
-uvicorn
-fastapi
-pydantic
+fastapi>=0.115
+google-genai>=1.0
+pydantic>=2.0
+python-dotenv>=1.0
+pyttsx3>=2.90
+uvicorn[standard]>=0.30
+websockets>=12.0
