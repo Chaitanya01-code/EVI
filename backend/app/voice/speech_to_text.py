@@ -1,24 +1,23 @@
-import websockets
-import asyncio
-import json
 import os
+import json
+import asyncio
+import websockets
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from dotenv import load_dotenv
-
 
 load_dotenv()
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
 
-text_to_speech = APIRouter()
+stt_router = APIRouter()
 
-@text_to_speech.websocket("/listen")
-async def listen(websocket: websocket.websocket):
+@stt_router.websocket("/listen")
+async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-
-    deepgram_url = f"wss://api.deepgram.com/v1/listen?access_token={DEEPGRAM_API_KEY}"
+    
+    # You might want to adjust parameters like encoding, sample_rate based on frontend
+    deepgram_url = "wss://api.deepgram.com/v1/listen?encoding=linear16&sample_rate=16000&channels=1"
     headers = {
-        "Authorization": f"Token {DEEPGRAM_API_KEY}",
-        "Content-Type": "application/json",
+        "Authorization": f"Token {DEEPGRAM_API_KEY}"
     }
 
     try:
