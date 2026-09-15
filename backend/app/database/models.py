@@ -10,6 +10,7 @@ class ConversationRecord(BaseModel):
     session_id: str
     user_message: str
     input_type: str
+    response_type: str
     intent: str
     mode: str
     action: str
@@ -24,6 +25,7 @@ class ConversationRecord(BaseModel):
             self.session_id,
             self.user_message,
             self.input_type,
+            self.response_type,
             self.intent,
             self.mode,
             self.action,

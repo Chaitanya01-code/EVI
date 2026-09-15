@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 
 # --------------------------------------------------
@@ -79,7 +80,10 @@ def _fallback_classification(user_input: str) -> IntentResult:
             mode="unclear", intent="missing_input", action="", target="",
             confidence=1, requires_action=False, reason="No transcript was provided."
         )
-    if any(greeting in text for greeting in ("hey evi", "hello", "hi evi", "how are you")):
+    if any(greeting in text for greeting in (
+        "hey evi", "hello", "hi evi", "how are you", "good morning",
+        "thank you", "thanks", "that's interesting", "im working", "i'm working",
+    )):
         return IntentResult(
             mode="conversation", intent="casual_chat", action="", target="",
             confidence=0.86, requires_action=False, reason="The user is making conversation."
@@ -172,7 +176,7 @@ User input:
 
     try:
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
+            model=GEMINI_MODEL,
             contents=f"Conversation context:\n{context or {}}\n\n{prompt}",
             config={
                 "response_mime_type": "application/json",
@@ -192,7 +196,7 @@ def generate_response(user_input: str, result: IntentResult, context: Optional[d
     if client is not None:
         try:
             response = client.models.generate_content(
-                model="gemini-2.5-flash-lite",
+                model=GEMINI_MODEL,
                 contents=(
                     "You are EVI, a concise desktop assistant. Respond naturally to the user. "
                     f"Classification: {result.model_dump_json()}\nContext: {context or {}}\n"

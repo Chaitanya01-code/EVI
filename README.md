@@ -17,6 +17,7 @@ Create `backend/.env` with local secrets. Do not commit this file:
 ```env
 DEEPGRAM_API_KEY=your_deepgram_key
 GEMINI_API_KEY=your_gemini_key
+GEMINI_MODEL=gemini-3.5-flash-lite
 EVI_TTS_ENABLED=true
 EVI_TTS_RATE=175
 ```

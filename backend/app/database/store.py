@@ -27,6 +27,7 @@ def _connection() -> sqlite3.Connection:
             session_id TEXT NOT NULL,
             user_message TEXT NOT NULL,
             input_type TEXT NOT NULL,
+            response_type TEXT NOT NULL DEFAULT 'text',
             intent TEXT NOT NULL,
             mode TEXT NOT NULL,
             action TEXT NOT NULL,
@@ -38,6 +39,11 @@ def _connection() -> sqlite3.Connection:
         )
         """
     )
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(conversation_history)")}
+    if "response_type" not in columns:
+        connection.execute(
+            "ALTER TABLE conversation_history ADD COLUMN response_type TEXT NOT NULL DEFAULT 'text'"
+        )
     connection.commit()
     return connection
 
@@ -48,9 +54,9 @@ def save_record(record: ConversationRecord) -> None:
         connection.execute(
             """
             INSERT INTO conversation_history
-            (session_id, user_message, input_type, intent, mode, action, target,
-             confidence, status, evi_response, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (session_id, user_message, input_type, response_type, intent, mode,
+             action, target, confidence, status, evi_response, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             record.as_db_values(),
         )

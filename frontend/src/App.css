@@ -52,7 +52,7 @@ button {
   background: var(--cream-light);
   overflow: hidden;
   /* Simulate a window with rounded corners and shadow */
-  border-radius: 12px;
+  border-radius: 0;
   box-shadow: 0 32px 80px rgba(100, 60, 20, 0.18), 0 4px 16px rgba(100, 60, 20, 0.08);
 }
 
@@ -271,16 +271,40 @@ button {
 .transcript {
   position: relative;
   z-index: 1;
+  flex: 0 0 auto;
   width: min(560px, 100%);
-  min-height: 24px;
+  max-height: 116px;
   margin: -10px 0 20px;
+  overflow-y: auto;
   color: var(--text-dark);
   text-align: center;
   font-size: 14px;
   line-height: 1.5;
 }
 
-.transcript-interim {
+.message-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.message-label {
+  flex: 0 0 auto;
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.message-row > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.message-interim {
   color: var(--text-muted);
 }
 
@@ -288,7 +312,7 @@ button {
   color: #a64d3c;
 }
 
-.assistant-response {
+.message-assistant {
   margin-top: 8px;
   color: var(--text-mid);
 }
@@ -296,6 +320,7 @@ button {
 .text-input-form {
   position: relative;
   z-index: 1;
+  flex: 0 0 auto;
   display: flex;
   width: min(520px, 100%);
   gap: 8px;

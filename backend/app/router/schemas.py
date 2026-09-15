@@ -21,4 +21,8 @@ class ProcessingResponse(BaseModel):
     classification: IntentResult
     status: Literal["completed", "fallback", "clarification"]
     response: str
+    response_type: Literal["text", "voice"]
+    text: str
+    audio: str = ""
+    tts_error: Optional[str] = None
     timestamp: datetime
