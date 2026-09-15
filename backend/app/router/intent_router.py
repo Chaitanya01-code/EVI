@@ -11,36 +11,55 @@ from app.core.classify import IntentResult, classify_input, generate_response
 from app.core.context import WorkingContext
 from app.database.models import ConversationRecord
 from app.database.store import save_record_async
+from app.memory.memory_service import process_memory_async, retrieve_user_memories
+from app.task.task_manager import TaskManager
+from app.task.task_models import TaskExecutionResult
+from app.task.task_router import TaskRouter, build_default_registry
+from app.task.task_understanding import build_structured_task
 from app.router.schemas import ProcessingResponse
 from app.voice.text_to_speech import synthesize_audio_async
 
 logger = logging.getLogger(__name__)
 _history: dict[str, list[dict[str, Any]]] = defaultdict(list)
+_task_manager = TaskManager(TaskRouter(build_default_registry()))
 
 
-def _route_response(context: WorkingContext, classification: IntentResult) -> str:
+async def _route_response(context: WorkingContext, classification: IntentResult):
     if classification.mode == "conversation":
         return generate_conversation_response(
             transcript=context.transcript,
             conversation_history=context.conversation_history,
             working_context=context.as_prompt_context(),
-        )
+        ), None
     if classification.mode == "unclear":
-        return "I wasn't sure what you meant. Could you rephrase that or tell me what you want me to do?"
+        return "I wasn't sure what you meant. Could you rephrase that or tell me what you want me to do?", None
     if classification.mode == "task":
-        return (
-            f"I can plan that task: {classification.action or classification.intent}"
-            f" for {classification.target or 'the requested target'}."
+        loop = asyncio.get_running_loop()
+        task = await loop.run_in_executor(
+            None,
+            build_structured_task,
+            context.transcript,
+            context.user_id,
+            context.session_id,
+            context.input_type,
+            context.as_prompt_context(),
         )
-    return generate_response(context.transcript, classification, context.as_prompt_context())
+        result: TaskExecutionResult = await loop.run_in_executor(
+            None, _task_manager.execute, task
+        )
+        return result.message, result
+    return generate_response(context.transcript, classification, context.as_prompt_context()), None
 
 
 async def process_context(context: WorkingContext) -> ProcessingResponse:
     loop = asyncio.get_running_loop()
+    context.memories = await loop.run_in_executor(
+        None, retrieve_user_memories, context.user_id
+    )
     classification = await loop.run_in_executor(
         None, classify_input, context.transcript, context.as_prompt_context()
     )
-    response = _route_response(context, classification)
+    response, task_result = await _route_response(context, classification)
     response_type = "voice" if context.input_type == "voice" else "text"
     audio = ""
     tts_error = None
@@ -52,8 +71,11 @@ async def process_context(context: WorkingContext) -> ProcessingResponse:
         except Exception:
             tts_error = "Voice response is unavailable, but the text response is ready."
     status = "clarification" if classification.mode == "unclear" else "completed"
+    if task_result is not None and not task_result.success:
+        status = "fallback"
     record = ConversationRecord(
         session_id=context.session_id,
+        user_id=context.user_id,
         user_message=context.transcript,
         input_type=context.input_type,
         response_type=response_type,
@@ -73,6 +95,11 @@ async def process_context(context: WorkingContext) -> ProcessingResponse:
         "timestamp": context.timestamp.isoformat(),
     })
     asyncio.create_task(save_record_async(record))
+    asyncio.create_task(process_memory_async(
+        context.user_id,
+        context.transcript,
+        context.as_prompt_context(),
+    ))
     return ProcessingResponse(
         session_id=context.session_id,
         transcript=context.transcript,
@@ -84,6 +111,7 @@ async def process_context(context: WorkingContext) -> ProcessingResponse:
         text=response,
         audio=audio,
         tts_error=tts_error,
+        task_result=task_result,
         timestamp=context.timestamp,
     )
 

@@ -104,6 +104,11 @@ def _fallback_classification(user_input: str) -> IntentResult:
             mode="task", intent="open_application", action="open_application", target=target,
             confidence=0.78, requires_action=True, reason="The user asked EVI to open something."
         )
+    if any(term in text for term in ("create a python", "create a project", "deploy", "search google")):
+        return IntentResult(
+            mode="task", intent="execute_task", action="", target="",
+            confidence=0.7, requires_action=True, reason="The user requested an executable task."
+        )
     return IntentResult(
         mode="unclear", intent="unclear_request", action="", target="",
         confidence=0.45, requires_action=False,

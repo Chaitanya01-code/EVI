@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 class ConversationRecord(BaseModel):
     session_id: str
+    user_id: str
     user_message: str
     input_type: str
     response_type: str
@@ -23,6 +24,7 @@ class ConversationRecord(BaseModel):
     def as_db_values(self) -> tuple[Any, ...]:
         return (
             self.session_id,
+            self.user_id,
             self.user_message,
             self.input_type,
             self.response_type,

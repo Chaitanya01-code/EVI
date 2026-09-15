@@ -18,6 +18,7 @@ stt_router = APIRouter()
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     session_id = websocket.query_params.get("session_id") or str(uuid4())
+    user_id = websocket.query_params.get("user_id") or "default-user"
 
     if not DEEPGRAM_API_KEY:
         await websocket.send_json({"error": "Voice service is not configured. Add DEEPGRAM_API_KEY to the backend environment."})
@@ -58,6 +59,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             if is_final:
                                 context = WorkingContext(
                                     session_id=session_id,
+                                    user_id=user_id,
                                     transcript=transcript,
                                     input_type="voice",
                                     conversation_history=conversation_history(session_id),

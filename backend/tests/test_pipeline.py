@@ -5,6 +5,7 @@ from app.agents.conversation_agent import generate_conversation_response
 from app.core.classify import IntentResult, classify_input
 from app.core.context import WorkingContext
 from app.router.intent_router import process_context
+from app.task.task_models import TaskExecutionResult, TaskStatus
 
 
 class PipelineTests(unittest.IsolatedAsyncioTestCase):
@@ -15,11 +16,21 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.conversation_gemini.start()
         self.persistence = patch("app.router.intent_router.save_record_async", new_callable=AsyncMock)
         self.persistence.start()
+        self.memory_retrieval = patch(
+            "app.router.intent_router.retrieve_user_memories", return_value=[]
+        )
+        self.memory_retrieval.start()
+        self.memory_processing = patch(
+            "app.router.intent_router.process_memory_async", new_callable=AsyncMock
+        )
+        self.memory_processing.start()
         self.tts = patch("app.router.intent_router.synthesize_audio_async", new_callable=AsyncMock)
         self.tts_mock = self.tts.start()
 
     async def asyncTearDown(self):
         self.persistence.stop()
+        self.memory_retrieval.stop()
+        self.memory_processing.stop()
         self.tts.stop()
         self.conversation_gemini.stop()
         self.gemini.stop()
@@ -42,10 +53,15 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.mode, "unclear")
 
     async def test_pipeline_returns_routed_response(self):
-        result = await process_context(WorkingContext(
-            transcript="Open VS Code",
-            input_type="text",
-        ))
+        task_result = TaskExecutionResult(
+            success=True, message="Visual Studio Code was opened.",
+            status=TaskStatus.COMPLETED, agent="DesktopAgent",
+        )
+        with patch("app.router.intent_router._task_manager.execute", return_value=task_result):
+            result = await process_context(WorkingContext(
+                transcript="Open VS Code",
+                input_type="text",
+            ))
         self.assertEqual(result.classification.mode, "task")
         self.assertTrue(result.response)
 
@@ -87,12 +103,18 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.input_type, "text")
         self.assertEqual(result.response_type, "text")
         self.assertEqual(result.audio, "")
+        self.assertEqual(result.session_id, result.session_id)
 
     async def test_text_task_does_not_call_tts(self):
-        result = await process_context(WorkingContext(
-            transcript="Open VS Code",
-            input_type="text",
-        ))
+        task_result = TaskExecutionResult(
+            success=True, message="Visual Studio Code was opened.",
+            status=TaskStatus.COMPLETED, agent="DesktopAgent",
+        )
+        with patch("app.router.intent_router._task_manager.execute", return_value=task_result):
+            result = await process_context(WorkingContext(
+                transcript="Open VS Code",
+                input_type="text",
+            ))
         self.assertEqual(result.response_type, "text")
         self.assertEqual(result.text, result.response)
         self.tts_mock.assert_not_called()
@@ -110,14 +132,55 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_voice_tts_failure_keeps_text_response(self):
         self.tts_mock.side_effect = RuntimeError("audio unavailable")
-        result = await process_context(WorkingContext(
-            transcript="Open VS Code",
-            input_type="voice",
-        ))
+        task_result = TaskExecutionResult(
+            success=True, message="Visual Studio Code was opened.",
+            status=TaskStatus.COMPLETED, agent="DesktopAgent",
+        )
+        with patch("app.router.intent_router._task_manager.execute", return_value=task_result):
+            result = await process_context(WorkingContext(
+                transcript="Open VS Code",
+                input_type="voice",
+            ))
         self.assertEqual(result.response_type, "voice")
         self.assertTrue(result.text)
         self.assertEqual(result.audio, "")
         self.assertIsNotNone(result.tts_error)
+
+    async def test_memories_are_loaded_into_working_context(self):
+        memories = [{"key": "preferred_name", "value": "Chaitanya", "memory_type": "profile", "confidence": 1.0}]
+        self.memory_retrieval.stop()
+        with patch("app.router.intent_router.retrieve_user_memories", return_value=memories) as retrieve:
+            result = await process_context(WorkingContext(
+                user_id="user-1",
+                transcript="Hello EVI",
+                input_type="text",
+            ))
+        retrieve.assert_called_once_with("user-1")
+        self.assertEqual(result.input_type, "text")
+
+    async def test_memory_extraction_updates_and_deletes(self):
+        from app.memory.memory_service import apply_memory
+        from app.memory.schemas import MemoryExtraction
+
+        with patch("app.memory.memory_service.upsert_memory") as upsert:
+            apply_memory("user-1", MemoryExtraction(
+                remember=True, operation="upsert", key="preferred_name",
+                value="Chaitanya", memory_type="profile", confidence=1,
+            ))
+        upsert.assert_called_once_with("user-1", "preferred_name", "Chaitanya", "profile", 1.0)
+
+        with patch("app.memory.memory_service.delete_memory") as delete:
+            apply_memory("user-1", MemoryExtraction(
+                remember=True, operation="delete", key="preferred_name", confidence=1,
+            ))
+        delete.assert_called_once_with("user-1", "preferred_name")
+
+        with patch("app.memory.memory_service.upsert_memory") as blocked:
+            apply_memory("user-1", MemoryExtraction(
+                remember=True, operation="upsert", key="api_key",
+                value="not persisted", memory_type="secret", confidence=1,
+            ))
+        blocked.assert_not_called()
 
 
 if __name__ == "__main__":

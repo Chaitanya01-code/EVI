@@ -36,6 +36,13 @@ function App() {
   const [textInput, setTextInput] = useState('');
   const [processing, setProcessing] = useState(false);
   const [sessionId] = useState(() => crypto.randomUUID());
+  const [userId] = useState(() => {
+    const storedUserId = window.localStorage.getItem('evi-user-id');
+    if (storedUserId) return storedUserId;
+    const newUserId = crypto.randomUUID();
+    window.localStorage.setItem('evi-user-id', newUserId);
+    return newUserId;
+  });
   const audioRef = useRef(null);
   const socketRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -101,7 +108,7 @@ function App() {
     }
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const websocketUrl = `${API_BASE_URL.replace(/^http/, 'ws')}/api/voice/listen?session_id=${encodeURIComponent(sessionId)}`;
+    const websocketUrl = `${API_BASE_URL.replace(/^http/, 'ws')}/api/voice/listen?session_id=${encodeURIComponent(sessionId)}&user_id=${encodeURIComponent(userId)}`;
     const socket = new WebSocket(websocketUrl);
     const audioContext = new AudioContext();
     const source = audioContext.createMediaStreamSource(stream);
@@ -169,7 +176,7 @@ function App() {
       const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcript: message, session_id: sessionId, input_type: 'text' }),
+        body: JSON.stringify({ transcript: message, session_id: sessionId, user_id: userId, input_type: 'text' }),
       });
       if (!response.ok) throw new Error('Request failed');
       const result = await response.json();

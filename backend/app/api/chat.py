@@ -15,6 +15,7 @@ async def process_chat(request: ChatRequest) -> ProcessingResponse:
         session_id = request.session_id or str(uuid4())
         context = WorkingContext(
             session_id=session_id,
+            user_id=request.user_id,
             transcript=request.transcript.strip(),
             input_type=request.input_type,
             conversation_history=conversation_history(session_id),

@@ -22,7 +22,7 @@ EVI_TTS_ENABLED=true
 EVI_TTS_RATE=175
 ```
 
-Conversation records use `backend/data/evi.db` by default. Set `EVI_SQLITE_PATH` to use another SQLite file.
+Conversation history and long-term memories use the PostgreSQL database configured by `DB_URL`. The backend creates or reuses the `users`, `conversation_history`, and `memories` tables in that database.
 
 ## Run The Backend
 
@@ -69,6 +69,20 @@ Voice/Text
 ```
 
 Gemini returns `mode`, `intent`, `action`, `target`, `confidence`, `requires_action`, and `reason`. If Gemini or its configuration is unavailable, EVI uses a local classifier and keeps the request available as text.
+
+## Task Agents
+
+Task requests are understood by the existing Gemini client and converted into a structured task before execution. The task router selects one registered agent:
+
+```text
+Existing Architecture
+	-> Task Understanding
+	-> Task Router
+	-> Agent Registry
+	-> DesktopAgent | CodingAgent | CloudAgent | BrowserAgent
+```
+
+The Desktop Agent currently supports only opening Visual Studio Code and verifies that `Code.exe` is running. Coding, Cloud, and Browser agents accept structured tasks and return safe not-enabled-yet results; they do not execute real operations yet. New agents can be added by registering a `BaseAgent` implementation in the registry.
 
 ## Text-to-Speech
 

@@ -2,67 +2,116 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import sqlite3
-from pathlib import Path
+from typing import Any, Dict, List
 
+from app.database.connection import get_connection
 from app.database.models import ConversationRecord
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_DB = Path(__file__).resolve().parents[2] / "data" / "evi.db"
-DB_URL = os.getenv("DB_URL", "")
-DB_PATH = Path(os.getenv("EVI_SQLITE_PATH", str(_DEFAULT_DB)))
 
-
-def _connection() -> sqlite3.Connection:
-    if DB_URL and not DB_URL.startswith("sqlite"):
-        logger.warning("DB_URL is not a supported local SQLite URL; using EVI_SQLITE_PATH")
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(DB_PATH)
-    connection.execute(
-        """
-        CREATE TABLE IF NOT EXISTS conversation_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
-            user_message TEXT NOT NULL,
-            input_type TEXT NOT NULL,
-            response_type TEXT NOT NULL DEFAULT 'text',
-            intent TEXT NOT NULL,
-            mode TEXT NOT NULL,
-            action TEXT NOT NULL,
-            target TEXT NOT NULL,
-            confidence REAL NOT NULL,
-            status TEXT NOT NULL,
-            evi_response TEXT NOT NULL,
-            timestamp TEXT NOT NULL
-        )
-        """
-    )
-    columns = {row[1] for row in connection.execute("PRAGMA table_info(conversation_history)")}
-    if "response_type" not in columns:
+def initialize_database() -> None:
+    with get_connection() as connection:
         connection.execute(
-            "ALTER TABLE conversation_history ADD COLUMN response_type TEXT NOT NULL DEFAULT 'text'"
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS conversation_history (
+                id BIGSERIAL PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                user_id TEXT NOT NULL REFERENCES users(id),
+                user_message TEXT NOT NULL,
+                input_type TEXT NOT NULL,
+                response_type TEXT NOT NULL,
+                intent TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                action TEXT NOT NULL,
+                target TEXT NOT NULL,
+                confidence DOUBLE PRECISION NOT NULL,
+                status TEXT NOT NULL,
+                evi_response TEXT NOT NULL,
+                timestamp TIMESTAMPTZ NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS memories (
+                id BIGSERIAL PRIMARY KEY,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                memory_type TEXT NOT NULL,
+                confidence DOUBLE PRECISION NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (user_id, key)
+            );
+            CREATE INDEX IF NOT EXISTS memories_user_id_idx ON memories(user_id);
+            """
         )
-    connection.commit()
-    return connection
+
+
+def ensure_user(user_id: str) -> None:
+    with get_connection() as connection:
+        connection.execute(
+            "INSERT INTO users (id) VALUES (%s) ON CONFLICT (id) DO NOTHING",
+            (user_id,),
+        )
 
 
 def save_record(record: ConversationRecord) -> None:
-    connection = _connection()
-    try:
+    ensure_user(record.user_id)
+    with get_connection() as connection:
         connection.execute(
             """
             INSERT INTO conversation_history
-            (session_id, user_message, input_type, response_type, intent, mode,
+            (session_id, user_id, user_message, input_type, response_type, intent, mode,
              action, target, confidence, status, evi_response, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             record.as_db_values(),
         )
-        connection.commit()
-    finally:
-        connection.close()
+
+
+def retrieve_memories(user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+    ensure_user(user_id)
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT key, value, memory_type, confidence
+            FROM memories WHERE user_id = %s
+            ORDER BY updated_at DESC LIMIT %s
+            """,
+            (user_id, limit),
+        ).fetchall()
+    return [
+        {"key": row[0], "value": row[1], "memory_type": row[2], "confidence": row[3]}
+        for row in rows
+    ]
+
+
+def upsert_memory(user_id: str, key: str, value: str, memory_type: str, confidence: float) -> None:
+    ensure_user(user_id)
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO memories (user_id, key, value, memory_type, confidence)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, key) DO UPDATE SET
+                value = EXCLUDED.value, memory_type = EXCLUDED.memory_type,
+                confidence = EXCLUDED.confidence, updated_at = NOW()
+            """,
+            (user_id, key, value, memory_type, confidence),
+        )
+
+
+def delete_memory(user_id: str, key: str) -> None:
+    with get_connection() as connection:
+        connection.execute("DELETE FROM memories WHERE user_id = %s AND key = %s", (user_id, key))
+
+
+async def initialize_database_async() -> None:
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, initialize_database)
 
 
 async def save_record_async(record: ConversationRecord) -> None:
