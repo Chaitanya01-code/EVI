@@ -38,5 +38,8 @@ class CodingToolRegistry:
     def resolve(self, action: str) -> Callable[..., Dict[str, Any]] | None:
         return self._tools.get(action)
 
+    def list_tools(self) -> list[str]:
+        return sorted(self._tools)
+
 
 coding_tools = CodingToolRegistry()

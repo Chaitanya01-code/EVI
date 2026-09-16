@@ -24,6 +24,9 @@ class CloudToolRegistry:
     def resolve(self, action: str) -> Callable[..., Dict[str, Any]] | None:
         return self._tools.get(action)
 
+    def list_tools(self) -> list[str]:
+        return sorted(self._tools)
+
     @staticmethod
     def inspect(provider: str = "mock", target: str = "") -> Dict[str, Any]:
         return provider_for(provider).inspect(target)

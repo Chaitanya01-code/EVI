@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.agents.conversation_agent import generate_conversation_response
+from app.api.lab_events import lab_event_bus
 from app.core.classify import IntentResult, classify_input, generate_response
 from app.core.context import WorkingContext
 from app.database.models import ConversationRecord, TaskRecord
@@ -22,7 +23,7 @@ from app.voice.text_to_speech import synthesize_audio_async
 
 logger = logging.getLogger(__name__)
 _history: dict[str, list[dict[str, Any]]] = defaultdict(list)
-_task_manager = TaskManager(TaskRouter(build_default_registry()))
+_task_manager = TaskManager(TaskRouter(build_default_registry()), event_callback=lab_event_bus.publish)
 
 
 async def _route_response(context: WorkingContext, classification: IntentResult):
@@ -64,6 +65,7 @@ async def _route_response(context: WorkingContext, classification: IntentResult)
             timestamp=datetime.now(timezone.utc),
         )
         asyncio.create_task(save_or_update_task_record_async(initial_record))
+        lab_event_bus.publish({"event": "task_created", "task_id": task.task_id, "task_type": task.task_type.value, "input_type": task.input_type})
 
         result: TaskExecutionResult = await loop.run_in_executor(
             None, _task_manager.execute, task

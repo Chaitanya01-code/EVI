@@ -91,6 +91,28 @@ The agents use per-agent tool registries and return structured success and verif
 
 Multi-step tasks are coordinated by `app.orchestrator`. The orchestrator builds a dependency-aware execution plan, routes each step through the existing `AgentRegistry`, passes structured output through an execution context, retries bounded failures, runs independent steps in parallel, and emits safe progress events in the task response. Protected operations wait for confirmation instead of bypassing agent policies. Per-step results extend the shared `task_history` store through `task_history_steps`.
 
+## EVI Lab API
+
+The existing Lab modal reads live backend data from `/api/lab`:
+
+- `GET /api/lab/overview`
+- `GET /api/lab/agents`
+- `GET /api/lab/agents/{agent_id}`
+- `GET /api/lab/agents/{agent_id}/activity`
+- `GET /api/lab/tasks`
+- `GET /api/lab/tasks/{task_id}`
+- `GET /api/lab/tasks/{task_id}/steps`
+- `GET /api/lab/conversations`
+- `GET /api/lab/conversations/{conversation_id}`
+- `GET /api/lab/memory`
+- `GET /api/lab/executions`
+- `GET /api/lab/system/health`
+- `GET /api/lab/events` (Server-Sent Events)
+
+Lists use `limit` and `offset` pagination. The event stream exposes safe task, step, and agent lifecycle events. There is currently no authentication middleware in the repository; Lab responses therefore omit raw user IDs and credential-like memory keys rather than claiming authorization that does not exist. Add the project's authentication dependency before exposing Lab endpoints beyond a trusted local deployment.
+
+Set `EVI_CORS_ORIGINS` to a comma-separated list of allowed frontend origins. The local default allows Vite at `http://localhost:5173` and `http://127.0.0.1:5173`.
+
 ## Text-to-Speech
 
 Server-side speech is enabled by default. Disable it with:

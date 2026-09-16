@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import './App.css';
+import { connectLabEvents, getAgents, getLabOverview, getSystemHealth, getTasks } from './services/labApi';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -42,6 +43,8 @@ function App() {
   const [error, setError] = useState('');
   const [assistantResponse, setAssistantResponse] = useState('');
   const [executionEvents, setExecutionEvents] = useState([]);
+  const [labData, setLabData] = useState(null);
+  const [labError, setLabError] = useState('');
   const [textInput, setTextInput] = useState('');
   const [processing, setProcessing] = useState(false);
   const [backgroundEnabled, setBackgroundEnabled] = useState(true);
@@ -83,6 +86,28 @@ function App() {
   }, []);
 
   useEffect(() => () => stopListening(), []);
+
+  useEffect(() => {
+    if (!labOpen) return undefined;
+    let active = true;
+    setLabError('');
+    Promise.all([getLabOverview(), getAgents(), getTasks(), getSystemHealth()])
+      .then(([overview, agents, tasks, health]) => {
+        if (active) setLabData({ overview, agents: agents.data || [], tasks: tasks.data || [], health });
+      })
+      .catch(() => {
+        if (active) setLabError('Unable to load Lab data.');
+      });
+    const disconnect = connectLabEvents(() => {
+      Promise.all([getLabOverview(), getAgents(), getTasks(), getSystemHealth()])
+        .then(([overview, agents, tasks, health]) => active && setLabData({ overview, agents: agents.data || [], tasks: tasks.data || [], health }))
+        .catch(() => active && setLabError('Lab updates disconnected.'));
+    }, () => active && setLabError('Lab updates disconnected.'));
+    return () => {
+      active = false;
+      disconnect();
+    };
+  }, [labOpen]);
 
   const playVoiceResponse = async audioSource => {
     if (!audioSource) return;
@@ -420,9 +445,8 @@ function App() {
                       <h3>Background Orchestration</h3>
                       <span className="lab-tag green">{backgroundEnabled ? "Running" : "Paused"}</span>
                     </div>
-                    <p className="lab-desc">
-                      EVI background service monitors desktop activities, manages automated tasks, and keeps agents active.
-                    </p>
+                    {labError && <p className="lab-desc transcript-error">{labError}</p>}
+                    {!labData && !labError && <p className="lab-desc">Loading Lab data...</p>}
                     <div className="lab-stats">
                       <div className="stat-box">
                         <div className="stat-label">Background Working</div>
@@ -430,35 +454,22 @@ function App() {
                       </div>
                       <div className="stat-box">
                         <div className="stat-label">Desktop Agent</div>
-                        <div className="stat-val">Ready (8 Modules)</div>
+                        <div className="stat-val">{labData ? `${labData.agents.length} registered` : 'Loading...'}</div>
                       </div>
                       <div className="stat-box">
                         <div className="stat-label">Active Session</div>
-                        <div className="stat-val">{sessionId.slice(0, 8)}...</div>
+                        <div className="stat-val">{labData ? `${labData.overview.tasks.running} running` : 'Loading...'}</div>
                       </div>
                     </div>
 
                     <div className="lab-tasks-list">
-                      <div className="lab-task-item">
-                        <div className="lab-task-info">
-                          <span>🖥️</span>
-                          <div>
-                            <strong>Desktop Automation Daemon</strong>
-                            <div style={{ fontSize: '11.5px', color: '#8c7565' }}>Apps, Windows, Files, Folders, System, Terminal</div>
-                          </div>
+                      {labData?.tasks.slice(0, 5).map(task => (
+                        <div className="lab-task-item" key={task.task_id}>
+                          <div><strong>{task.agent}</strong> — {task.action || task.task_type}</div>
+                          <span className="lab-task-status">{task.status}</span>
                         </div>
-                        <span className="lab-task-status">● Active</span>
-                      </div>
-                      <div className="lab-task-item">
-                        <div className="lab-task-info">
-                          <span>⚡</span>
-                          <div>
-                            <strong>Task Router & Understanding</strong>
-                            <div style={{ fontSize: '11.5px', color: '#8c7565' }}>Domain-aware routing (Desktop vs Browser vs Coding vs Cloud)</div>
-                          </div>
-                        </div>
-                        <span className="lab-task-status">● Active</span>
-                      </div>
+                      ))}
+                      {!labData?.tasks.length && labData && <div className="lab-task-item">No tasks yet.</div>}
                     </div>
                   </div>
                 )}
@@ -467,25 +478,16 @@ function App() {
                   <div className="lab-card">
                     <div className="lab-card-header">
                       <h3>Registered Agents</h3>
-                      <span className="lab-tag green">4 Connected</span>
+                      <span className="lab-tag green">{labData ? `${labData.agents.length} Connected` : 'Loading...'}</span>
                     </div>
                     <div className="lab-tasks-list">
-                      <div className="lab-task-item">
-                        <div><strong>DesktopAgent</strong> — Local OS apps, windows, filesystem, input, system tools</div>
-                        <span className="lab-task-status">Online</span>
-                      </div>
-                      <div className="lab-task-item">
-                        <div><strong>BrowserAgent</strong> — Web navigation, online browsing & search</div>
-                        <span className="lab-task-status">Online</span>
-                      </div>
-                      <div className="lab-task-item">
-                        <div><strong>CodingAgent</strong> — Python/JS project creation, code analysis, debugging</div>
-                        <span className="lab-task-status">Online</span>
-                      </div>
-                      <div className="lab-task-item">
-                        <div><strong>CloudAgent</strong> — AWS cloud deployments, Docker status, infrastructure</div>
-                        <span className="lab-task-status">Online</span>
-                      </div>
+                      {labData?.agents.map(agent => (
+                        <div className="lab-task-item" key={agent.id}>
+                          <div><strong>{agent.name}</strong></div>
+                          <span className="lab-task-status">{agent.status}</span>
+                        </div>
+                      ))}
+                      {!labData?.agents.length && labData && <div className="lab-task-item">No registered agents.</div>}
                     </div>
                   </div>
                 )}
@@ -494,18 +496,14 @@ function App() {
                   <div className="lab-card">
                     <div className="lab-card-header">
                       <h3>Desktop Capability Registry</h3>
-                      <span className="lab-tag green">Verified</span>
+                      <span className="lab-tag green">{labData?.health?.status || 'Loading...'}</span>
                     </div>
-                    <p className="lab-desc">All 8 modular capability groups loaded and verified:</p>
+                    <p className="lab-desc">Live component health from the EVI backend:</p>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '9px', fontSize: '12.5px', color: '#4a382b' }}>
-                      <div>✓ <strong>applications</strong> (open, close, restart, list, find)</div>
-                      <div>✓ <strong>windows</strong> (switch, minimize, maximize, resize, move)</div>
-                      <div>✓ <strong>files</strong> (open, copy, move, rename, delete, search)</div>
-                      <div>✓ <strong>folders</strong> (create, open, rename, move, delete)</div>
-                      <div>✓ <strong>system</strong> (shutdown, restart, lock, sleep)</div>
-                      <div>✓ <strong>input</strong> (mouse click, mouse move, type, key)</div>
-                      <div>✓ <strong>screen</strong> (screenshot, inspect, UI element)</div>
-                      <div>✓ <strong>terminal</strong> (safe, policy confirm, blocked)</div>
+                      {Object.entries(labData?.health?.components || {}).map(([component, status]) => (
+                        <div key={component}>● <strong>{component}</strong> — {status}</div>
+                      ))}
+                      {!labData?.health && <div>Loading component health...</div>}
                     </div>
                   </div>
                 )}

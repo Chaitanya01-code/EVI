@@ -20,6 +20,15 @@ class Coordinator:
         self.event_callback = event_callback
 
     def emit(self, context: ExecutionContext, event: Dict[str, Any]) -> None:
+        if "event" not in event:
+            status = event.get("status", "update")
+            event["event"] = {
+                "running": "step_started",
+                "completed": "step_completed",
+                "failed": "step_failed",
+                "waiting": "step_waiting",
+            }.get(status, "step_updated")
+            event["task_id"] = context.task_id
         context.events.append(event)
         if self.event_callback:
             self.event_callback(event)
