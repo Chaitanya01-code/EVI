@@ -136,6 +136,34 @@ def _fallback_understanding(text: str) -> TaskUnderstandingResult:
             confidence=0.88,
         )
 
+    # Generic multi-step detection. Each clause is independently understood so
+    # the orchestrator, rather than this layer, owns execution and dependencies.
+    clauses = [part.strip(" ,") for part in re.split(r"\s*,\s*|\s+and then\s+|\s+and\s+", cleaned, flags=re.IGNORECASE) if part.strip(" ,")]
+    if len(clauses) > 1:
+        steps = []
+        for clause in clauses:
+            if re.fullmatch(r"(?:run|execute)\s+(?:it|the project|the application)", clause, flags=re.IGNORECASE):
+                steps.append({"task_type": "coding", "category": "execution", "action": "run_program", "target": "{path}"})
+                continue
+            understood = _fallback_understanding(clause)
+            if understood.task_type == TaskType.UNKNOWN:
+                steps = []
+                break
+            steps.append({
+                "task_type": understood.task_type.value,
+                "category": understood.category,
+                "action": understood.action,
+                "target": understood.target,
+            })
+        if len(steps) > 1:
+            return TaskUnderstandingResult(
+                task_type=TaskType.MULTI_STEP,
+                category="orchestration",
+                action="multi_step",
+                steps=steps,
+                confidence=0.78,
+            )
+
     # Browser operations (Search / Web navigation)
     if re.search(r"\b(search\s+(google|the web|bing|duckduckgo)\s+(for\s+)?|search\s+for\s+|search\s+the\s+web\b)", normalized):
         query = re.sub(r"^(?:please\s+)?(?:search\s+(?:google|the\s+web|bing|duckduckgo)\s+(?:for\s+)?|search\s+for\s+|search\s+)", "", cleaned, flags=re.IGNORECASE).strip().rstrip(".")
@@ -154,6 +182,24 @@ def _fallback_understanding(text: str) -> TaskUnderstandingResult:
             action="navigate",
             target=target or "website",
             confidence=0.80,
+        )
+
+    if re.search(r"\bopen\b\s+(?:its\s+)?documentation\b", normalized):
+        return TaskUnderstandingResult(
+            task_type=TaskType.BROWSER,
+            category="navigation",
+            action="open_url",
+            target="{url}",
+            confidence=0.72,
+        )
+
+    if re.search(r"\bopen\b\s+(?:the\s+)?(?:project\s+)?folder\b", normalized):
+        return TaskUnderstandingResult(
+            task_type=TaskType.DESKTOP,
+            category="folders",
+            action="open_folder",
+            target="{path}",
+            confidence=0.78,
         )
 
     # Desktop: Restart application
@@ -213,6 +259,23 @@ def _fallback_understanding(text: str) -> TaskUnderstandingResult:
         )
 
     # Coding operations
+    if re.search(r"\b(run|execute)\b\s+(?:it|the project|the application|tests?)\b", normalized):
+        return TaskUnderstandingResult(
+            task_type=TaskType.CODING,
+            category="execution",
+            action="run_tests" if "test" in normalized else "run_program",
+            target="{path}" if "test" not in normalized else "",
+            confidence=0.76,
+        )
+    if re.search(r"\binstall\b\s+([A-Za-z0-9_.-]+)", normalized):
+        match = re.search(r"\binstall\b\s+([A-Za-z0-9_.-]+)", cleaned, flags=re.IGNORECASE)
+        return TaskUnderstandingResult(
+            task_type=TaskType.CODING,
+            category="environment",
+            action="install_dependency",
+            target=match.group(1) if match else "",
+            confidence=0.76,
+        )
     if re.search(r"\b(create|build|make|debug|write)\b.*\b(project|file|code|python|fastapi|application|app)\b", normalized):
         action = "debug_code" if "debug" in normalized else "create_project"
         return TaskUnderstandingResult(

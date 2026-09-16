@@ -84,6 +84,10 @@ Existing Architecture
 
 The agents use per-agent tool registries and return structured success and verification results. Desktop supports Windows application discovery and control. Browser supports URL opening, web search, and bounded page/title/link extraction using standard-library HTTP tools. Coding supports project inspection and creation, file reading/creation/search, controlled tests and commands, Git status/diff, and runtime detection. Cloud supports provider-neutral mock inspection, status, health, and dry-run deployment; live provider adapters and destructive operations remain policy-gated placeholders. The shared task-history system records all agents through the existing router.
 
+## Multi-Agent Orchestration
+
+Multi-step tasks are coordinated by `app.orchestrator`. The orchestrator builds a dependency-aware execution plan, routes each step through the existing `AgentRegistry`, passes structured output through an execution context, retries bounded failures, runs independent steps in parallel, and emits safe progress events in the task response. Protected operations wait for confirmation instead of bypassing agent policies. Per-step results extend the shared `task_history` store through `task_history_steps`.
+
 ## Text-to-Speech
 
 Server-side speech is enabled by default. Disable it with:

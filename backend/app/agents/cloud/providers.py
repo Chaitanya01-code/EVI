@@ -32,6 +32,15 @@ class UnconfiguredProvider(CloudProvider):
         return {"success": False, "verified": False, "message": f"No {self.name.upper()} deployment adapter is configured."}
 
     def deploy(self, target: str = "", dry_run: bool = True) -> Dict[str, Any]:
+        if dry_run:
+            return {
+                "success": True,
+                "verified": True,
+                "message": f"{self.name.upper()} deployment plan created in dry-run mode; no cloud resources were changed.",
+                "provider": self.name,
+                "dry_run": True,
+                "target": target,
+            }
         return {"success": False, "verified": False, "message": "Real cloud deployment is disabled until an authorized provider adapter is configured."}
 
 
@@ -50,7 +59,7 @@ class MockProvider(CloudProvider):
 
 def provider_for(name: str) -> CloudProvider:
     normalized = name.lower().strip()
-    if normalized == "mock" or os.getenv("EVI_CLOUD_DRY_RUN", "1") == "1":
+    if normalized == "mock":
         return MockProvider()
     if normalized in {"aws", "azure", "gcp"}:
         return UnconfiguredProvider(normalized)

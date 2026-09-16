@@ -33,6 +33,9 @@ def open_url(target: str) -> Dict[str, Any]:
     if not target.strip():
         return _result(False, "I need a URL to open.")
     url = _normalize_url(target)
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or any(character.isspace() for character in url):
+        return _result(False, "That URL is not valid.", url=url)
     try:
         opened = webbrowser.open(url, new=2)
         return _result(bool(opened), "The page was opened successfully." if opened else "I couldn't open that page.", bool(opened), url=url)

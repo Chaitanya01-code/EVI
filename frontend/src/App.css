@@ -317,6 +317,24 @@ button {
   color: var(--text-mid);
 }
 
+.execution-events {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0 34px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.execution-event {
+  display: flex;
+  gap: 8px;
+}
+
+.execution-event span:first-child {
+  color: var(--amber);
+  font-weight: 700;
+}
+
 .text-input-form {
   position: relative;
   z-index: 1;

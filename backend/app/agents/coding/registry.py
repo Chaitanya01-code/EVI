@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Callable, Dict
 
 from app.agents.coding.tools import (
-    create_file, create_project, detect_node, detect_python, detect_stack,
+    create_file, create_project, detect_node, detect_python, detect_stack, run_program,
     git_diff, git_status, inspect_project, read_file, run_command, run_tests,
     search_code, unsupported,
 )
@@ -19,7 +19,7 @@ class CodingToolRegistry:
             "create_file": create_file,
             "search_code": search_code,
             "run_command": run_command,
-            "run_program": run_command,
+            "run_program": run_program,
             "run_script": run_command,
             "run_tests": run_tests,
             "git_status": git_status,
@@ -28,6 +28,7 @@ class CodingToolRegistry:
             "diff": git_diff,
             "detect_python": detect_python,
             "detect_node": detect_node,
+            "install_dependency": lambda **_: unsupported("install_dependency"),
             "edit_file": lambda **_: unsupported("edit_file"),
             "delete_file": lambda **_: unsupported("delete_file"),
             "commit": lambda **_: unsupported("commit"),

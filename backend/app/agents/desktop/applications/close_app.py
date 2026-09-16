@@ -15,7 +15,7 @@ def close_app(app_name: str) -> Dict[str, Any]:
     if os.name != "nt":
         return {"success": False, "verified": False, "message": "Closing desktop applications is only supported on Windows."}
 
-    app = find_app(app_name)
+    app = getattr(close_app, "find_app", find_app)(app_name)
     candidates = []
     if app and app.process_name:
         candidates.append(app.process_name)
@@ -48,3 +48,6 @@ def close_app(app_name: str) -> Dict[str, Any]:
         return {"success": True, "verified": False, "message": f"{display} was closed."}
 
     return {"success": False, "verified": False, "message": f"I couldn't close {app_name}."}
+
+
+close_app.find_app = find_app

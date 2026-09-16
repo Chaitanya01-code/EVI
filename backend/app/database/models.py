@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
-from typing import Any
+from typing import Any, Dict, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ConversationRecord(BaseModel):
@@ -52,6 +53,13 @@ class TaskRecord(BaseModel):
     success: bool
     verified: bool
     message: str
+    original_text: str = ""
+    input_type: str = "text"
+    arguments: Dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     timestamp: datetime
 
     def as_db_values(self) -> tuple[Any, ...]:
@@ -68,6 +76,13 @@ class TaskRecord(BaseModel):
             self.success,
             self.verified,
             self.message,
+            self.original_text,
+            self.input_type,
+            json.dumps(self.arguments, default=str),
+            self.error,
+            self.created_at,
+            self.started_at,
+            self.completed_at,
             self.timestamp.isoformat(),
         )
 

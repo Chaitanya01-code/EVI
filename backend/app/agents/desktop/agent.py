@@ -22,6 +22,7 @@ class DesktopAgent(BaseAgent):
             status=TaskStatus.VERIFYING,
             agent=self.__class__.__name__,
             task=task,
+            output=execution,
         )
 
     def verify(self, task: StructuredTask, result: TaskExecutionResult) -> TaskExecutionResult:

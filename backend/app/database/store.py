@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 
 from app.database.connection import get_connection
 from app.database.models import ConversationRecord, TaskRecord
+from app.database.orchestration_history import TaskStepRecord
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +61,41 @@ def initialize_database() -> None:
                 success BOOLEAN NOT NULL,
                 verified BOOLEAN NOT NULL,
                 message TEXT NOT NULL,
+                original_text TEXT NOT NULL DEFAULT '',
+                input_type TEXT NOT NULL DEFAULT 'text',
+                arguments JSONB NOT NULL DEFAULT '{}'::jsonb,
+                error TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                started_at TIMESTAMPTZ,
+                completed_at TIMESTAMPTZ,
                 timestamp TIMESTAMPTZ NOT NULL
             );
             CREATE INDEX IF NOT EXISTS task_history_user_id_idx ON task_history(user_id);
             CREATE INDEX IF NOT EXISTS task_history_task_id_idx ON task_history(task_id);
+            ALTER TABLE task_history ADD COLUMN IF NOT EXISTS original_text TEXT NOT NULL DEFAULT '';
+            ALTER TABLE task_history ADD COLUMN IF NOT EXISTS input_type TEXT NOT NULL DEFAULT 'text';
+            ALTER TABLE task_history ADD COLUMN IF NOT EXISTS arguments JSONB NOT NULL DEFAULT '{}'::jsonb;
+            ALTER TABLE task_history ADD COLUMN IF NOT EXISTS error TEXT;
+            ALTER TABLE task_history ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+            ALTER TABLE task_history ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+            ALTER TABLE task_history ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+            CREATE TABLE IF NOT EXISTS task_history_steps (
+                id BIGSERIAL PRIMARY KEY,
+                task_id TEXT NOT NULL REFERENCES task_history(task_id) ON DELETE CASCADE,
+                step_id TEXT NOT NULL,
+                agent_type TEXT NOT NULL,
+                action TEXT NOT NULL,
+                status TEXT NOT NULL,
+                success BOOLEAN NOT NULL,
+                verified BOOLEAN NOT NULL,
+                result JSONB NOT NULL DEFAULT '{}'::jsonb,
+                error TEXT,
+                started_at TIMESTAMPTZ,
+                completed_at TIMESTAMPTZ,
+                timestamp TIMESTAMPTZ NOT NULL,
+                UNIQUE (task_id, step_id)
+            );
+            CREATE INDEX IF NOT EXISTS task_history_steps_task_id_idx ON task_history_steps(task_id);
             """
         )
 
@@ -147,13 +179,20 @@ def save_or_update_task_record(record: TaskRecord) -> None:
             """
             INSERT INTO task_history
             (task_id, session_id, user_id, task_type, agent_type, category,
-             action, target, status, success, verified, message, timestamp)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             action, target, status, success, verified, message, original_text,
+             input_type, arguments, error, created_at, started_at, completed_at, timestamp)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (task_id) DO UPDATE SET
                 status = EXCLUDED.status,
                 success = EXCLUDED.success,
                 verified = EXCLUDED.verified,
                 message = EXCLUDED.message,
+                original_text = EXCLUDED.original_text,
+                input_type = EXCLUDED.input_type,
+                arguments = EXCLUDED.arguments,
+                error = EXCLUDED.error,
+                started_at = EXCLUDED.started_at,
+                completed_at = EXCLUDED.completed_at,
                 timestamp = EXCLUDED.timestamp
             """,
             record.as_db_values(),
@@ -166,4 +205,33 @@ async def save_or_update_task_record_async(record: TaskRecord) -> None:
         await loop.run_in_executor(None, save_or_update_task_record, record)
     except Exception:
         logger.exception("Unable to persist task history record")
+
+
+def save_or_update_task_step_record(record: TaskStepRecord) -> None:
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO task_history_steps
+            (task_id, step_id, agent_type, action, status, success, verified,
+             result, error, started_at, completed_at, timestamp)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)
+            ON CONFLICT (task_id, step_id) DO UPDATE SET
+                status = EXCLUDED.status,
+                success = EXCLUDED.success,
+                verified = EXCLUDED.verified,
+                result = EXCLUDED.result,
+                error = EXCLUDED.error,
+                completed_at = EXCLUDED.completed_at,
+                timestamp = EXCLUDED.timestamp
+            """,
+            record.as_db_values(),
+        )
+
+
+async def save_or_update_task_step_record_async(record: TaskStepRecord) -> None:
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, save_or_update_task_step_record, record)
+    except Exception:
+        logger.exception("Unable to persist task step history record")
 

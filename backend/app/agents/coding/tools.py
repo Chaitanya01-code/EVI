@@ -112,6 +112,15 @@ def run_tests(path: str = "") -> Dict[str, Any]:
     return run_command("python -m pytest", path, timeout=120)
 
 
+def run_program(path: str, working_directory: str = "") -> Dict[str, Any]:
+    if not path:
+        return _result(False, "I need a program path to run.")
+    program = Path(path)
+    if program.is_dir():
+        program = program / "main.py"
+    return run_command(f'python "{program}"', working_directory or str(program.parent))
+
+
 def git_status(path: str = "") -> Dict[str, Any]:
     return run_command("git status --short", path)
 

@@ -10,7 +10,8 @@ from app.agents.conversation_agent import generate_conversation_response
 from app.core.classify import IntentResult, classify_input, generate_response
 from app.core.context import WorkingContext
 from app.database.models import ConversationRecord, TaskRecord
-from app.database.store import save_or_update_task_record_async, save_record_async
+from app.database.orchestration_history import TaskStepRecord
+from app.database.store import save_or_update_task_record_async, save_or_update_task_step_record_async, save_record_async
 from app.memory.memory_service import process_memory_async, retrieve_user_memories
 from app.task.task_manager import TaskManager
 from app.task.task_models import TaskExecutionResult, TaskStatus
@@ -58,6 +59,8 @@ async def _route_response(context: WorkingContext, classification: IntentResult)
             success=False,
             verified=False,
             message="Task initialized",
+            original_text=task.original_text,
+            input_type=task.input_type,
             timestamp=datetime.now(timezone.utc),
         )
         asyncio.create_task(save_or_update_task_record_async(initial_record))
@@ -79,9 +82,30 @@ async def _route_response(context: WorkingContext, classification: IntentResult)
             success=result.success,
             verified=result.verified,
             message=result.message,
+            original_text=task.original_text,
+            input_type=task.input_type,
+            arguments=result.output.get("variables", {}),
+            error=None if result.success else result.message,
+            completed_at=datetime.now(timezone.utc),
             timestamp=datetime.now(timezone.utc),
         )
         asyncio.create_task(save_or_update_task_record_async(final_record))
+        for step in result.output.get("steps", []):
+            step_result = step.get("result", {})
+            agent_result = step_result.get("agent_result", {})
+            asyncio.create_task(save_or_update_task_step_record_async(TaskStepRecord(
+                task_id=task.task_id,
+                step_id=step.get("step_id", ""),
+                agent_type=step.get("agent_type", result.agent),
+                action=step.get("action", ""),
+                status=step.get("status", result.status.value),
+                success=bool(agent_result.get("success", False)),
+                verified=bool(agent_result.get("verified", False)),
+                result=step_result.get("output", {}),
+                error=step.get("error"),
+                started_at=step.get("started_at"),
+                completed_at=step.get("completed_at"),
+            )))
 
         return result.message, result
     return generate_response(context.transcript, classification, context.as_prompt_context()), None

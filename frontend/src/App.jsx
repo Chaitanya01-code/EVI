@@ -41,6 +41,7 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState('Connecting to EVI...');
   const [error, setError] = useState('');
   const [assistantResponse, setAssistantResponse] = useState('');
+  const [executionEvents, setExecutionEvents] = useState([]);
   const [textInput, setTextInput] = useState('');
   const [processing, setProcessing] = useState(false);
   const [backgroundEnabled, setBackgroundEnabled] = useState(true);
@@ -139,6 +140,7 @@ function App() {
       } else if (message.processing) {
         setProcessing(false);
         setAssistantResponse(message.processing.text || message.processing.response);
+        setExecutionEvents(message.processing.task_result?.output?.events || []);
         if (message.processing.tts_error) setError(message.processing.tts_error);
         if (message.processing.response_type === 'voice') {
           void playVoiceResponse(message.processing.audio);
@@ -192,6 +194,7 @@ function App() {
       if (!response.ok) throw new Error('Request failed');
       const result = await response.json();
       setAssistantResponse(result.text || result.response);
+      setExecutionEvents(result.task_result?.output?.events || []);
       if (result.response_type === 'voice') {
         void playVoiceResponse(result.audio);
       }
@@ -311,6 +314,17 @@ function App() {
                   <div className="message-row message-assistant">
                     <span className="message-label">EVI</span>
                     <span>{assistantResponse}</span>
+                  </div>
+                )}
+                {executionEvents.length > 0 && (
+                  <div className="execution-events" aria-label="Task progress">
+                    {executionEvents.map(event => (
+                      <div className="execution-event" key={`${event.step_id}-${event.status}`}>
+                        <span>{event.agent}</span>
+                        <span>{event.action}</span>
+                        <span>{event.status}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
               </>

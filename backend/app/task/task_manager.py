@@ -6,24 +6,18 @@ from app.task.task_models import (
     TaskStatus,
     TaskType,
 )
+from app.orchestrator.orchestrator import MultiAgentOrchestrator
 from app.task.task_router import TaskRouter
 
 
 class TaskManager:
     def __init__(self, router: TaskRouter) -> None:
         self.router = router
+        self.orchestrator = MultiAgentOrchestrator(router)
 
     def execute(self, task: StructuredTask) -> TaskExecutionResult:
         if task.task_type == TaskType.MULTI_STEP:
-            task.status = TaskStatus.FAILED
-            return TaskExecutionResult(
-                success=False,
-                verified=False,
-                message="This is a multi-step task combining multiple actions. Multi-agent orchestration is required and will be supported in an upcoming update.",
-                status=TaskStatus.FAILED,
-                agent="orchestrator",
-                task=task,
-            )
+            return self.orchestrator.run(task)
         agent = self.router.route(task)
         if agent is None:
             task.status = TaskStatus.FAILED
