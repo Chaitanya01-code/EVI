@@ -1,6 +1,6 @@
 # EVI
 
-EVI is a voice and text desktop assistant. It accepts browser microphone audio or typed messages, transcribes voice with Deepgram, classifies intent with Gemini, routes the request, stores conversation history in SQLite, and speaks generated responses through the backend machine's Windows voice engine.
+EVI is a voice and text desktop assistant. It accepts browser microphone audio or typed messages, transcribes voice with Deepgram, classifies intent with Gemini, routes the request, stores conversation and task history in PostgreSQL, and speaks generated responses through the backend machine's Windows voice engine.
 
 ## Requirements
 
@@ -18,11 +18,12 @@ Create `backend/.env` with local secrets. Do not commit this file:
 DEEPGRAM_API_KEY=your_deepgram_key
 GEMINI_API_KEY=your_gemini_key
 GEMINI_MODEL=gemini-3.5-flash-lite
+DB_URL=postgresql://user:password@localhost:5432/evi
 EVI_TTS_ENABLED=true
 EVI_TTS_RATE=175
 ```
 
-Conversation history and long-term memories use the PostgreSQL database configured by `DB_URL`. The backend creates or reuses the `users`, `conversation_history`, and `memories` tables in that database.
+Conversation history, task history, orchestration step history, and long-term memories use the PostgreSQL database configured by `DB_URL`. The backend creates or reuses the `users`, `conversation_history`, `task_history`, `task_history_steps`, and `memories` tables in that database.
 
 ## Run The Backend
 
@@ -62,8 +63,10 @@ Voice/Text
 	-> Working Context
 	-> Gemini structured intent classification
 	-> Conversation, question, task, or clarification routing
+	-> Task Router or Multi-Agent Orchestrator
+	-> Agent planner, policy, tools, and verification
+	-> PostgreSQL task/conversation persistence
 	-> Response generation
-	-> Async SQLite persistence
 	-> Optional text-to-speech
 	-> Frontend response
 ```
@@ -100,10 +103,17 @@ Adjust the speaking speed with `EVI_TTS_RATE`. TTS runs asynchronously and does 
 
 ## Tests
 
-Run the backend pipeline tests with:
+Run the focused backend tests with:
 
 ```powershell
 Set-Location backend
-..\.venv\Scripts\python.exe -m unittest discover -s tests -v
+python -m pytest tests -v
+```
+
+The test suite covers routing, DesktopAgent tools, Browser/Coding/Cloud foundations, orchestration dependencies, retries, parallel branches, policy blocking, and result passing. To run the standard-library test discovery command instead:
+
+```powershell
+Set-Location backend
+python -m unittest discover -s tests -v
 ```
 
