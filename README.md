@@ -82,7 +82,7 @@ Existing Architecture
 	-> DesktopAgent | CodingAgent | CloudAgent | BrowserAgent
 ```
 
-The Desktop Agent currently supports only opening Visual Studio Code and verifies that `Code.exe` is running. Coding, Cloud, and Browser agents accept structured tasks and return safe not-enabled-yet results; they do not execute real operations yet. New agents can be added by registering a `BaseAgent` implementation in the registry.
+The Desktop Agent currently provides a modular application tool registry with application discovery, open, close, restart, and process verification. It resolves Start Menu entries and available commands rather than relying on a primary hardcoded application list. Coding, Cloud, and Browser agents accept structured tasks and return safe not-enabled-yet results; they do not execute real operations yet. New agents can be added by registering a `BaseAgent` implementation in the registry.
 
 ## Text-to-Speech
 

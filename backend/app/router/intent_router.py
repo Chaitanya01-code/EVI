@@ -9,11 +9,11 @@ from typing import Any
 from app.agents.conversation_agent import generate_conversation_response
 from app.core.classify import IntentResult, classify_input, generate_response
 from app.core.context import WorkingContext
-from app.database.models import ConversationRecord
-from app.database.store import save_record_async
+from app.database.models import ConversationRecord, TaskRecord
+from app.database.store import save_or_update_task_record_async, save_record_async
 from app.memory.memory_service import process_memory_async, retrieve_user_memories
 from app.task.task_manager import TaskManager
-from app.task.task_models import TaskExecutionResult
+from app.task.task_models import TaskExecutionResult, TaskStatus
 from app.task.task_router import TaskRouter, build_default_registry
 from app.task.task_understanding import build_structured_task
 from app.router.schemas import ProcessingResponse
@@ -44,9 +44,45 @@ async def _route_response(context: WorkingContext, classification: IntentResult)
             context.input_type,
             context.as_prompt_context(),
         )
+
+        initial_record = TaskRecord(
+            task_id=task.task_id,
+            session_id=task.session_id,
+            user_id=task.user_id,
+            task_type=task.task_type.value,
+            agent_type="pending",
+            category=task.category,
+            action=task.action,
+            target=task.target,
+            status=TaskStatus.PENDING.value,
+            success=False,
+            verified=False,
+            message="Task initialized",
+            timestamp=datetime.now(timezone.utc),
+        )
+        asyncio.create_task(save_or_update_task_record_async(initial_record))
+
         result: TaskExecutionResult = await loop.run_in_executor(
             None, _task_manager.execute, task
         )
+
+        final_record = TaskRecord(
+            task_id=task.task_id,
+            session_id=task.session_id,
+            user_id=task.user_id,
+            task_type=task.task_type.value,
+            agent_type=result.agent,
+            category=task.category,
+            action=task.action,
+            target=task.target,
+            status=result.status.value,
+            success=result.success,
+            verified=result.verified,
+            message=result.message,
+            timestamp=datetime.now(timezone.utc),
+        )
+        asyncio.create_task(save_or_update_task_record_async(final_record))
+
         return result.message, result
     return generate_response(context.transcript, classification, context.as_prompt_context()), None
 

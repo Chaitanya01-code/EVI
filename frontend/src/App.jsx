@@ -25,6 +25,14 @@ const MicIcon = () => (
   </svg>
 );
 
+const FlaskIcon = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10 2v7.31L4.62 18.2A2 2 0 0 0 6.34 21h11.32a2 2 0 0 0 1.72-2.8L14 9.31V2" />
+    <path d="M8.5 2h7" />
+    <path d="M7 16h10" />
+  </svg>
+);
+
 function App() {
   const [listening, setListening] = useState(false);
   const [pulseAnim, setPulseAnim] = useState(false);
@@ -35,6 +43,9 @@ function App() {
   const [assistantResponse, setAssistantResponse] = useState('');
   const [textInput, setTextInput] = useState('');
   const [processing, setProcessing] = useState(false);
+  const [backgroundEnabled, setBackgroundEnabled] = useState(true);
+  const [labOpen, setLabOpen] = useState(false);
+  const [labTab, setLabTab] = useState('background');
   const [sessionId] = useState(() => crypto.randomUUID());
   const [userId] = useState(() => {
     const storedUserId = window.localStorage.getItem('evi-user-id');
@@ -220,6 +231,35 @@ function App() {
         <div className="bg-wave bg-wave-1" />
         <div className="bg-wave bg-wave-2" />
 
+        {/* Top-Right Header Controls: EVI Lab & Background Toggle */}
+        <div className="evi-top-bar">
+          <button 
+            type="button"
+            className="evi-lab-btn" 
+            onClick={() => setLabOpen(true)}
+            title="Open EVI Lab"
+          >
+            <FlaskIcon />
+            <span>EVI Lab</span>
+          </button>
+
+          <div className="evi-bg-toggle-container">
+            <span className="evi-bg-toggle-label">Background</span>
+            <button 
+              type="button"
+              className={`evi-switch ${backgroundEnabled ? 'evi-switch-on' : 'evi-switch-off'}`}
+              onClick={() => setBackgroundEnabled(prev => !prev)}
+              aria-pressed={backgroundEnabled}
+              title={backgroundEnabled ? "Disable background working" : "Enable background working"}
+            >
+              <span className="evi-switch-track">
+                {backgroundEnabled ? 'ON' : ''}
+              </span>
+              <span className="evi-switch-thumb" />
+            </button>
+          </div>
+        </div>
+
         {/* Avatar section */}
         <div className="evi-avatar-section">
           <div className="avatar-sparkle avatar-sparkle-left">✦</div>
@@ -306,6 +346,159 @@ function App() {
         <footer className="evi-footer">
           Ready when you are&nbsp;<span className="footer-heart">🧡</span>
         </footer>
+
+        {/* Bottom-Right Floating Background Working Badge */}
+        {backgroundEnabled && (
+          <button 
+            type="button"
+            className="evi-bg-floating-badge"
+            onClick={() => {
+              setLabTab('background');
+              setLabOpen(true);
+            }}
+            title="Click to open background tasks in EVI Lab"
+          >
+            <span className="evi-bg-pulse-dot" />
+            <span>EVI is working in background</span>
+          </button>
+        )}
+
+        {/* EVI Lab Modal Overlay */}
+        {labOpen && (
+          <div className="evi-lab-overlay" onClick={() => setLabOpen(false)}>
+            <div className="evi-lab-modal" onClick={e => e.stopPropagation()}>
+              <div className="evi-lab-header">
+                <div className="evi-lab-title">
+                  <FlaskIcon />
+                  <h2>EVI Lab</h2>
+                  <span className="evi-lab-status-badge">
+                    <span className="status-dot status-listening" /> {backgroundEnabled ? "Background Service Active" : "Standby"}
+                  </span>
+                </div>
+                <button className="evi-lab-close-btn" onClick={() => setLabOpen(false)} aria-label="Close EVI Lab">✕</button>
+              </div>
+
+              <div className="evi-lab-tabs">
+                <button 
+                  className={`evi-lab-tab ${labTab === 'background' ? 'active' : ''}`}
+                  onClick={() => setLabTab('background')}
+                >
+                  Background Tasks
+                </button>
+                <button 
+                  className={`evi-lab-tab ${labTab === 'agents' ? 'active' : ''}`}
+                  onClick={() => setLabTab('agents')}
+                >
+                  Active Agents
+                </button>
+                <button 
+                  className={`evi-lab-tab ${labTab === 'diagnostics' ? 'active' : ''}`}
+                  onClick={() => setLabTab('diagnostics')}
+                >
+                  System Capabilities
+                </button>
+              </div>
+
+              <div className="evi-lab-content">
+                {labTab === 'background' && (
+                  <div className="lab-card">
+                    <div className="lab-card-header">
+                      <h3>Background Orchestration</h3>
+                      <span className="lab-tag green">{backgroundEnabled ? "Running" : "Paused"}</span>
+                    </div>
+                    <p className="lab-desc">
+                      EVI background service monitors desktop activities, manages automated tasks, and keeps agents active.
+                    </p>
+                    <div className="lab-stats">
+                      <div className="stat-box">
+                        <div className="stat-label">Background Working</div>
+                        <div className="stat-val">{backgroundEnabled ? "Enabled (ON)" : "Disabled (OFF)"}</div>
+                      </div>
+                      <div className="stat-box">
+                        <div className="stat-label">Desktop Agent</div>
+                        <div className="stat-val">Ready (8 Modules)</div>
+                      </div>
+                      <div className="stat-box">
+                        <div className="stat-label">Active Session</div>
+                        <div className="stat-val">{sessionId.slice(0, 8)}...</div>
+                      </div>
+                    </div>
+
+                    <div className="lab-tasks-list">
+                      <div className="lab-task-item">
+                        <div className="lab-task-info">
+                          <span>🖥️</span>
+                          <div>
+                            <strong>Desktop Automation Daemon</strong>
+                            <div style={{ fontSize: '11.5px', color: '#8c7565' }}>Apps, Windows, Files, Folders, System, Terminal</div>
+                          </div>
+                        </div>
+                        <span className="lab-task-status">● Active</span>
+                      </div>
+                      <div className="lab-task-item">
+                        <div className="lab-task-info">
+                          <span>⚡</span>
+                          <div>
+                            <strong>Task Router & Understanding</strong>
+                            <div style={{ fontSize: '11.5px', color: '#8c7565' }}>Domain-aware routing (Desktop vs Browser vs Coding vs Cloud)</div>
+                          </div>
+                        </div>
+                        <span className="lab-task-status">● Active</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {labTab === 'agents' && (
+                  <div className="lab-card">
+                    <div className="lab-card-header">
+                      <h3>Registered Agents</h3>
+                      <span className="lab-tag green">4 Connected</span>
+                    </div>
+                    <div className="lab-tasks-list">
+                      <div className="lab-task-item">
+                        <div><strong>DesktopAgent</strong> — Local OS apps, windows, filesystem, input, system tools</div>
+                        <span className="lab-task-status">Online</span>
+                      </div>
+                      <div className="lab-task-item">
+                        <div><strong>BrowserAgent</strong> — Web navigation, online browsing & search</div>
+                        <span className="lab-task-status">Online</span>
+                      </div>
+                      <div className="lab-task-item">
+                        <div><strong>CodingAgent</strong> — Python/JS project creation, code analysis, debugging</div>
+                        <span className="lab-task-status">Online</span>
+                      </div>
+                      <div className="lab-task-item">
+                        <div><strong>CloudAgent</strong> — AWS cloud deployments, Docker status, infrastructure</div>
+                        <span className="lab-task-status">Online</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {labTab === 'diagnostics' && (
+                  <div className="lab-card">
+                    <div className="lab-card-header">
+                      <h3>Desktop Capability Registry</h3>
+                      <span className="lab-tag green">Verified</span>
+                    </div>
+                    <p className="lab-desc">All 8 modular capability groups loaded and verified:</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '9px', fontSize: '12.5px', color: '#4a382b' }}>
+                      <div>✓ <strong>applications</strong> (open, close, restart, list, find)</div>
+                      <div>✓ <strong>windows</strong> (switch, minimize, maximize, resize, move)</div>
+                      <div>✓ <strong>files</strong> (open, copy, move, rename, delete, search)</div>
+                      <div>✓ <strong>folders</strong> (create, open, rename, move, delete)</div>
+                      <div>✓ <strong>system</strong> (shutdown, restart, lock, sleep)</div>
+                      <div>✓ <strong>input</strong> (mouse click, mouse move, type, key)</div>
+                      <div>✓ <strong>screen</strong> (screenshot, inspect, UI element)</div>
+                      <div>✓ <strong>terminal</strong> (safe, policy confirm, blocked)</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

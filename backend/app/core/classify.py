@@ -98,13 +98,15 @@ def _fallback_classification(user_input: str) -> IntentResult:
             mode="task", intent="browser_search", action="open_and_search", target="YouTube",
             confidence=0.76, requires_action=True, reason="The user requested a browser search."
         )
-    if text.startswith(("open ", "launch ", "start ")):
-        target = text.split(maxsplit=1)[1].strip()
+    if text.startswith(("open ", "launch ", "start ", "close ", "quit ", "exit ", "restart ", "switch to ", "minimize ", "maximize ")):
+        parts = text.split(maxsplit=1)
+        action_verb = parts[0].strip()
+        target = parts[1].strip() if len(parts) > 1 else ""
         return IntentResult(
-            mode="task", intent="open_application", action="open_application", target=target,
-            confidence=0.78, requires_action=True, reason="The user asked EVI to open something."
+            mode="task", intent=f"{action_verb}_application", action=f"{action_verb}_application", target=target,
+            confidence=0.78, requires_action=True, reason="The user asked EVI to perform a desktop operation."
         )
-    if any(term in text for term in ("create a python", "create a project", "deploy", "search google")):
+    if any(term in text for term in ("create a python", "create a project", "deploy", "search google", "search the web")):
         return IntentResult(
             mode="task", intent="execute_task", action="", target="",
             confidence=0.7, requires_action=True, reason="The user requested an executable task."

@@ -5,7 +5,7 @@ import logging
 from typing import Any, Dict, List
 
 from app.database.connection import get_connection
-from app.database.models import ConversationRecord
+from app.database.models import ConversationRecord, TaskRecord
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,24 @@ def initialize_database() -> None:
                 UNIQUE (user_id, key)
             );
             CREATE INDEX IF NOT EXISTS memories_user_id_idx ON memories(user_id);
+            CREATE TABLE IF NOT EXISTS task_history (
+                id BIGSERIAL PRIMARY KEY,
+                task_id TEXT UNIQUE NOT NULL,
+                session_id TEXT NOT NULL,
+                user_id TEXT NOT NULL REFERENCES users(id),
+                task_type TEXT NOT NULL,
+                agent_type TEXT NOT NULL,
+                category TEXT NOT NULL,
+                action TEXT NOT NULL,
+                target TEXT NOT NULL,
+                status TEXT NOT NULL,
+                success BOOLEAN NOT NULL,
+                verified BOOLEAN NOT NULL,
+                message TEXT NOT NULL,
+                timestamp TIMESTAMPTZ NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS task_history_user_id_idx ON task_history(user_id);
+            CREATE INDEX IF NOT EXISTS task_history_task_id_idx ON task_history(task_id);
             """
         )
 
@@ -120,3 +138,32 @@ async def save_record_async(record: ConversationRecord) -> None:
         await loop.run_in_executor(None, save_record, record)
     except Exception:
         logger.exception("Unable to persist conversation record")
+
+
+def save_or_update_task_record(record: TaskRecord) -> None:
+    ensure_user(record.user_id)
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO task_history
+            (task_id, session_id, user_id, task_type, agent_type, category,
+             action, target, status, success, verified, message, timestamp)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (task_id) DO UPDATE SET
+                status = EXCLUDED.status,
+                success = EXCLUDED.success,
+                verified = EXCLUDED.verified,
+                message = EXCLUDED.message,
+                timestamp = EXCLUDED.timestamp
+            """,
+            record.as_db_values(),
+        )
+
+
+async def save_or_update_task_record_async(record: TaskRecord) -> None:
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, save_or_update_task_record, record)
+    except Exception:
+        logger.exception("Unable to persist task history record")
+
