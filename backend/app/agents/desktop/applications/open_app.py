@@ -12,7 +12,7 @@ def open_app(app_name: str) -> Dict[str, Any]:
     if not app_name:
         return {"success": False, "verified": False, "message": "No application specified."}
 
-    app = find_app(app_name)
+    app = getattr(open_app, "find_app", find_app)(app_name)
     if app is None:
         # Fallback: attempt direct startfile or command execution
         try:
@@ -48,3 +48,6 @@ def open_app(app_name: str) -> Dict[str, Any]:
         }
     except (OSError, subprocess.SubprocessError):
         return {"success": False, "verified": False, "message": f"I couldn't open {app.name}."}
+
+
+open_app.find_app = find_app

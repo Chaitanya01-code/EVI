@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -38,7 +38,7 @@ class StructuredTask(BaseModel):
     category: str = ""
     action: str
     target: str = ""
-    steps: list[dict[str, Any]] = Field(default_factory=list)
+    steps: List[Dict[str, Any]] = Field(default_factory=list)
     status: TaskStatus = TaskStatus.PENDING
     confidence: float = Field(default=0, ge=0, le=1)
 

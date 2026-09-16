@@ -4,4 +4,7 @@ from app.task.task_models import StructuredTask
 
 
 def build_plan(task: StructuredTask) -> Dict[str, Any]:
-    return {"operation": task.action or "browser_task", "target": task.target}
+    action = task.action or "browser_task"
+    if action == "navigate":
+        action = "open_url"
+    return {"category": task.category or "navigation", "operation": action, "target": task.target}

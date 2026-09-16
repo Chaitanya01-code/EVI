@@ -82,7 +82,7 @@ Existing Architecture
 	-> DesktopAgent | CodingAgent | CloudAgent | BrowserAgent
 ```
 
-The Desktop Agent currently provides a modular application tool registry with application discovery, open, close, restart, and process verification. It resolves Start Menu entries and available commands rather than relying on a primary hardcoded application list. Coding, Cloud, and Browser agents accept structured tasks and return safe not-enabled-yet results; they do not execute real operations yet. New agents can be added by registering a `BaseAgent` implementation in the registry.
+The agents use per-agent tool registries and return structured success and verification results. Desktop supports Windows application discovery and control. Browser supports URL opening, web search, and bounded page/title/link extraction using standard-library HTTP tools. Coding supports project inspection and creation, file reading/creation/search, controlled tests and commands, Git status/diff, and runtime detection. Cloud supports provider-neutral mock inspection, status, health, and dry-run deployment; live provider adapters and destructive operations remain policy-gated placeholders. The shared task-history system records all agents through the existing router.
 
 ## Text-to-Speech
 
