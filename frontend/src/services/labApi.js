@@ -18,6 +18,7 @@ export const getConversation = (conversationId, limit = 50, offset = 0) => get(`
 export const getMemory = (limit = 20, offset = 0) => get(`/api/lab/memory?limit=${limit}&offset=${offset}`);
 export const getExecutions = (limit = 20, offset = 0) => get(`/api/lab/executions?limit=${limit}&offset=${offset}`);
 export const getSystemHealth = () => get('/api/lab/system/health');
+export const getLlmStatus = () => get('/api/lab/llm/status');
 
 export function connectLabEvents(onEvent, onError) {
   const events = new EventSource(`${API_BASE_URL}/api/lab/events`);

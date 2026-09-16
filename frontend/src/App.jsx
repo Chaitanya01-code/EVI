@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import './App.css';
-import { connectLabEvents, getAgents, getLabOverview, getSystemHealth, getTasks } from './services/labApi';
+import { connectLabEvents, getAgents, getLabOverview, getLlmStatus, getSystemHealth, getTasks } from './services/labApi';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -91,16 +91,16 @@ function App() {
     if (!labOpen) return undefined;
     let active = true;
     setLabError('');
-    Promise.all([getLabOverview(), getAgents(), getTasks(), getSystemHealth()])
-      .then(([overview, agents, tasks, health]) => {
-        if (active) setLabData({ overview, agents: agents.data || [], tasks: tasks.data || [], health });
+    Promise.all([getLabOverview(), getAgents(), getTasks(), getSystemHealth(), getLlmStatus()])
+      .then(([overview, agents, tasks, health, llm]) => {
+        if (active) setLabData({ overview, agents: agents.data || [], tasks: tasks.data || [], health, llm });
       })
       .catch(() => {
         if (active) setLabError('Unable to load Lab data.');
       });
     const disconnect = connectLabEvents(() => {
-      Promise.all([getLabOverview(), getAgents(), getTasks(), getSystemHealth()])
-        .then(([overview, agents, tasks, health]) => active && setLabData({ overview, agents: agents.data || [], tasks: tasks.data || [], health }))
+      Promise.all([getLabOverview(), getAgents(), getTasks(), getSystemHealth(), getLlmStatus()])
+        .then(([overview, agents, tasks, health, llm]) => active && setLabData({ overview, agents: agents.data || [], tasks: tasks.data || [], health, llm }))
         .catch(() => active && setLabError('Lab updates disconnected.'));
     }, () => active && setLabError('Lab updates disconnected.'));
     return () => {
@@ -503,6 +503,7 @@ function App() {
                       {Object.entries(labData?.health?.components || {}).map(([component, status]) => (
                         <div key={component}>● <strong>{component}</strong> — {status}</div>
                       ))}
+                      {labData?.llm && <div>● <strong>LLM</strong> — {labData.llm.provider || 'not used'} / {labData.llm.active_model || 'no response yet'}</div>}
                       {!labData?.health && <div>Loading component health...</div>}
                     </div>
                   </div>

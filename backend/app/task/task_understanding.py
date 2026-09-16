@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from app.core.classify import GEMINI_MODEL, _get_client
+from app.core.classify import GEMINI_MODEL, _generate_llm, _get_client
 from app.task.task_models import StructuredTask, TaskType
 
 logger = logging.getLogger(__name__)
@@ -301,25 +301,20 @@ def _fallback_understanding(text: str) -> TaskUnderstandingResult:
 
 
 def understand_task(text: str, context: Optional[dict] = None) -> TaskUnderstandingResult:
-    client = _get_client()
-    if client is not None:
-        try:
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=f"{_TASK_INSTRUCTION}\n\nContext: {context or {}}\nTask: {text}",
-                config={
-                    "response_mime_type": "application/json",
-                    "response_schema": TaskUnderstandingResult,
-                    "temperature": 0,
-                },
-            )
-            parsed = TaskUnderstandingResult.model_validate_json(response.text)
-            # Ensure target normalization if target is an app alias
-            if parsed.task_type == TaskType.DESKTOP and parsed.category == "applications":
-                parsed.target = _normalize_app_target(parsed.target)
-            return parsed
-        except Exception:
-            logger.exception("Task understanding failed; using local fallback")
+    try:
+        response = _generate_llm(
+            f"{_TASK_INSTRUCTION}\n\nContext: {context or {}}\nTask: {text}",
+            response_schema=TaskUnderstandingResult,
+        )
+        parsed = TaskUnderstandingResult.model_validate_json(response.text)
+        # Ensure target normalization if target is an app alias.
+        if parsed.task_type == TaskType.DESKTOP and parsed.category == "applications":
+            parsed.target = _normalize_app_target(parsed.target)
+        if parsed.task_type == TaskType.CODING and parsed.action == "create_project" and parsed.target.lower() in {"python project", "fastapi application", "python", "fastapi"}:
+            parsed.target = ""
+        return parsed
+    except Exception:
+        logger.exception("Task understanding failed; using local fallback")
     return _fallback_understanding(text)
 
 

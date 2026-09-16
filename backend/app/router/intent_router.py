@@ -28,11 +28,15 @@ _task_manager = TaskManager(TaskRouter(build_default_registry()), event_callback
 
 async def _route_response(context: WorkingContext, classification: IntentResult):
     if classification.mode == "conversation":
-        return generate_conversation_response(
-            transcript=context.transcript,
-            conversation_history=context.conversation_history,
-            working_context=context.as_prompt_context(),
-        ), None
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            generate_conversation_response,
+            context.transcript,
+            context.conversation_history,
+            context.as_prompt_context(),
+        )
+        return response, None
     if classification.mode == "unclear":
         return "I wasn't sure what you meant. Could you rephrase that or tell me what you want me to do?", None
     if classification.mode == "task":
@@ -110,7 +114,9 @@ async def _route_response(context: WorkingContext, classification: IntentResult)
             )))
 
         return result.message, result
-    return generate_response(context.transcript, classification, context.as_prompt_context()), None
+    return await loop.run_in_executor(
+        None, generate_response, context.transcript, classification, context.as_prompt_context()
+    ), None
 
 
 async def process_context(context: WorkingContext) -> ProcessingResponse:

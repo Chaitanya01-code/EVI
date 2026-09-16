@@ -4,7 +4,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from app.core.classify import GEMINI_MODEL, _get_client
+from app.core.classify import _generate_llm
 from app.database.store import delete_memory, retrieve_memories, upsert_memory
 from app.memory.schemas import MemoryExtraction
 
@@ -23,18 +23,10 @@ If there is nothing durable to remember, return remember=false and operation=non
 
 
 def extract_memory(transcript: str, context: Optional[Dict[str, Any]] = None) -> MemoryExtraction:
-    client = _get_client()
-    if client is None:
-        return MemoryExtraction()
     try:
-        result = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=f"{_MEMORY_INSTRUCTION}\n\nContext: {context or {}}\nUser: {transcript}",
-            config={
-                "response_mime_type": "application/json",
-                "response_schema": MemoryExtraction,
-                "temperature": 0,
-            },
+        result = _generate_llm(
+            f"{_MEMORY_INSTRUCTION}\n\nContext: {context or {}}\nUser: {transcript}",
+            response_schema=MemoryExtraction,
         )
         return MemoryExtraction.model_validate_json(result.text)
     except Exception:

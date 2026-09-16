@@ -18,6 +18,7 @@ from app.api.lab_schemas import HealthResponse, PageResponse
 from app.database.connection import get_connection
 from app.database import lab_store
 from app.task.task_router import build_default_registry
+from app.llm.router import llm_router
 
 lab_router = APIRouter(prefix="/lab", tags=["EVI Lab"])
 
@@ -158,6 +159,20 @@ def health() -> Dict[str, Any]:
         components["tts"] = "unavailable"
     status = "healthy" if components["database"] == "healthy" else "degraded"
     return {"status": status, "timestamp": _now(), "components": components}
+
+
+@lab_router.get("/llm/status", summary="Get safe LLM fallback status", response_model=Dict[str, Any])
+def llm_status() -> Dict[str, Any]:
+    active = llm_router.last_response
+    return {
+        "primary": {"provider": "gemini", "model": llm_router.models()[0].model},
+        "active_model": active.model if active else None,
+        "provider": active.provider if active else None,
+        "fallback_used": active.fallback_used if active else False,
+        "last_latency_ms": active.latency_ms if active else None,
+        "models": [status.__dict__ for status in llm_router.statuses.values()],
+        "timestamp": _now(),
+    }
 
 
 @lab_router.get("/events", summary="Stream safe Lab events")

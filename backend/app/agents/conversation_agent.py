@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from app.core.classify import GEMINI_MODEL, _get_client
+from app.core.classify import _generate_llm
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +27,6 @@ def generate_conversation_response(
     working_context: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Generate a natural casual response using EVI's configured Gemini client."""
-    client = _get_client()
-    if client is None:
-        logger.warning("Conversation agent is using fallback because Gemini is unavailable")
-        return _fallback_response()
-
     prompt = (
         f"{CONVERSATION_SYSTEM_INSTRUCTION}\n\n"
         f"Working context:\n{working_context or {}}\n\n"
@@ -39,11 +34,7 @@ def generate_conversation_response(
         f"User transcript:\n{transcript}"
     )
     try:
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config={"temperature": 0.7},
-        )
+        response = _generate_llm(prompt, temperature=0.7)
         final_text = (response.text or "").strip()
         return final_text or _fallback_response()
     except Exception:

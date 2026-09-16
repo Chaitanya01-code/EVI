@@ -1,9 +1,12 @@
 import os
 import logging
+import re
 from typing import Literal, Optional
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+from app.llm.models import LLMFailure
+from app.llm.router import llm_router
 
 
 load_dotenv()
@@ -67,6 +70,13 @@ def _get_client():
         except Exception:
             logger.exception("Unable to initialize Gemini client")
     return _client
+
+
+def _generate_llm(prompt: str, response_schema=None, temperature: float = 0):
+    response = llm_router.generate_sync(prompt, response_schema=response_schema, temperature=temperature)
+    if response_schema is not None:
+        response.text = re.sub(r"^```(?:json)?\s*|\s*```$", "", response.text.strip(), flags=re.IGNORECASE)
+    return response
 
 
 # --------------------------------------------------
@@ -176,44 +186,29 @@ User input:
 {user_input}
 """
 
-    client = _get_client()
-    if client is None:
-        logger.warning("Gemini unavailable; using local classification fallback")
-        return _fallback_classification(user_input)
-
     try:
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=f"Conversation context:\n{context or {}}\n\n{prompt}",
-            config={
-                "response_mime_type": "application/json",
-                "response_schema": IntentResult,
-                "temperature": 0,
-            },
+        response = _generate_llm(
+            f"Conversation context:\n{context or {}}\n\n{prompt}",
+            response_schema=IntentResult,
         )
         return IntentResult.model_validate_json(response.text)
     except Exception:
-        logger.exception("Gemini classification failed; using local fallback")
+        logger.exception("LLM classification failed; using local fallback")
         return _fallback_classification(user_input)
 
 
 def generate_response(user_input: str, result: IntentResult, context: Optional[dict] = None) -> str:
     """Generate an agent response using the shared Gemini client, with a safe fallback."""
-    client = _get_client()
-    if client is not None:
-        try:
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=(
-                    "You are EVI, a concise desktop assistant. Respond naturally to the user. "
-                    f"Classification: {result.model_dump_json()}\nContext: {context or {}}\n"
-                    f"User: {user_input}"
-                ),
-            )
-            if response.text:
-                return response.text.strip()
-        except Exception:
-            logger.exception("Gemini response generation failed")
+    try:
+        response = _generate_llm(
+            "You are EVI, a concise desktop assistant. Respond naturally to the user. "
+            f"Classification: {result.model_dump_json()}\nContext: {context or {}}\n"
+            f"User: {user_input}",
+        )
+        if response.text:
+            return response.text.strip()
+    except (LLMFailure, Exception):
+        logger.exception("LLM response generation failed")
     if result.mode == "conversation":
         return "I'm doing well and ready to help."
     if result.mode == "question":

@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
-from app.core.classify import GEMINI_MODEL, _get_client
+from app.core.classify import _generate_llm
 from app.task.task_models import StructuredTask
 
 logger = logging.getLogger(__name__)
@@ -156,33 +156,26 @@ def _fallback_plan(task: StructuredTask) -> Dict[str, Any]:
 
 def build_plan(task: StructuredTask) -> Dict[str, Any]:
     """Convert natural language task into structured desktop action."""
-    client = _get_client()
-    if client is not None:
-        try:
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=f"{_PLANNER_PROMPT}\n\nTask: {task.original_text}\nStructured: {task.model_dump_json()}",
-                config={
-                    "response_mime_type": "application/json",
-                    "response_schema": DesktopPlan,
-                    "temperature": 0,
-                },
-            )
-            plan = DesktopPlan.model_validate_json(response.text)
-            plan_dict = plan.model_dump()
-            plan_dict["operation"] = plan_dict["action"]
-            plan_dict["params"] = {
-                k: v for k, v in {
-                    "folder_name": plan.folder_name,
-                    "location": plan.location,
-                    "source": plan.source,
-                    "destination": plan.destination,
-                    "command": plan.command,
-                    "confirm": plan.confirm,
-                }.items() if v
-            }
-            return plan_dict
-        except Exception:
-            logger.exception("Gemini desktop plan generation failed; using fallback")
+    try:
+        response = _generate_llm(
+            f"{_PLANNER_PROMPT}\n\nTask: {task.original_text}\nStructured: {task.model_dump_json()}",
+            response_schema=DesktopPlan,
+        )
+        plan = DesktopPlan.model_validate_json(response.text)
+        plan_dict = plan.model_dump()
+        plan_dict["operation"] = plan_dict["action"]
+        plan_dict["params"] = {
+            k: v for k, v in {
+                "folder_name": plan.folder_name,
+                "location": plan.location,
+                "source": plan.source,
+                "destination": plan.destination,
+                "command": plan.command,
+                "confirm": plan.confirm,
+            }.items() if v
+        }
+        return plan_dict
+    except Exception:
+        logger.exception("LLM desktop plan generation failed; using fallback")
 
     return _fallback_plan(task)
