@@ -46,3 +46,13 @@ def test_computer_endpoints_are_available():
     )
     assert inspect_response.status_code == 200
     assert inspect_response.json()["success"] is True
+
+
+def test_lab_observability_snapshot_contains_runtime_domains():
+    response = client.get("/api/lab/observability")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["agents"]
+    assert data["tools"]
+    assert "work_context" in data
+    assert "verification" in data

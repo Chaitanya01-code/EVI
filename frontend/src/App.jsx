@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import './App.css';
-import { connectLabEvents, getAgents, getLabOverview, getLlmStatus, getSystemHealth, getTasks } from './services/labApi';
+import { connectLabEvents, getObservability, submitChat } from './services/labApi';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -34,6 +34,66 @@ const FlaskIcon = () => (
   </svg>
 );
 
+const LAB_TABS = [
+  ['overview', 'Overview'], ['tasks', 'Tasks'], ['agents', 'Agents'], ['activity', 'Activity'],
+  ['traces', 'Traces'], ['work', 'Work Context'], ['applications', 'Applications'],
+  ['desktop', 'Desktop Control'], ['tools', 'Tools'], ['inquiry', 'Inquiry'],
+  ['research', 'Research'], ['memory', 'Memory'], ['decisions', 'Decisions'],
+  ['projects', 'Projects'], ['verification', 'Verification'], ['errors', 'Errors'],
+  ['performance', 'Performance'], ['models', 'Models'], ['security', 'Security'],
+  ['integrations', 'Integrations'], ['settings', 'Settings'],
+];
+
+function displayValue(value) {
+  if (value === null || value === undefined || value === '') return 'Not available';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function LabRows({ items, empty = 'No data' }) {
+  if (!items?.length) return <div className="lab-task-item">{empty}</div>;
+  return <div className="lab-tasks-list">{items.map((item, index) => (
+    <div className="lab-task-item lab-detail-item" key={item.id || item.task_id || item.question_id || `${index}-${JSON.stringify(item).slice(0, 20)}`}>
+      {Object.entries(item).slice(0, 8).map(([key, value]) => (
+        <span key={key}><strong>{key.replaceAll('_', ' ')}</strong>: {displayValue(value)}</span>
+      ))}
+    </div>
+  ))}</div>;
+}
+
+function LabExtendedPanel({ tab, data, activityEvents }) {
+  const unavailable = data?.[tab]?.status === 'not_available';
+  const title = LAB_TABS.find(([id]) => id === tab)?.[1] || 'EVI Lab';
+  if (unavailable) return <div className="lab-card"><div className="lab-card-header"><h3>{title}</h3><span className="lab-tag">Unavailable</span></div><p className="lab-desc">{data[tab].message}</p></div>;
+
+  const panels = {
+    tasks: data?.tasks,
+    activity: activityEvents,
+    traces: data?.traces,
+    work: data?.work_context ? [data.work_context] : [],
+    applications: data?.applications,
+    desktop: [data?.desktop],
+    tools: data?.tools,
+    inquiry: data?.inquiry?.all,
+    research: data?.research?.results,
+    memory: data?.memory?.data,
+    decisions: data?.decisions,
+    projects: data?.projects?.data,
+    verification: data?.verification,
+    errors: data?.errors,
+    performance: data?.performance ? [data.performance] : [],
+    models: data?.models ? [data.models] : [],
+    security: data?.security ? [data.security] : [],
+    integrations: Object.entries(data?.integrations || {}).map(([name, status]) => ({ name, status })),
+    settings: [{ status: 'No Lab-specific settings configured' }],
+  };
+  return <div className="lab-card">
+    <div className="lab-card-header"><h3>{title}</h3><span className="lab-tag green">Live</span></div>
+    <p className="lab-desc">Operational information from the current EVI runtime.</p>
+    <LabRows items={panels[tab]} />
+  </div>;
+}
+
 function App() {
   const [listening, setListening] = useState(false);
   const [pulseAnim, setPulseAnim] = useState(false);
@@ -49,7 +109,8 @@ function App() {
   const [processing, setProcessing] = useState(false);
   const [backgroundEnabled, setBackgroundEnabled] = useState(true);
   const [labOpen, setLabOpen] = useState(false);
-  const [labTab, setLabTab] = useState('background');
+  const [labTab, setLabTab] = useState('overview');
+  const [activityEvents, setActivityEvents] = useState([]);
   const [sessionId] = useState(() => crypto.randomUUID());
   const [userId] = useState(() => {
     const storedUserId = window.localStorage.getItem('evi-user-id');
@@ -91,16 +152,20 @@ function App() {
     if (!labOpen) return undefined;
     let active = true;
     setLabError('');
-    Promise.all([getLabOverview(), getAgents(), getTasks(), getSystemHealth(), getLlmStatus()])
-      .then(([overview, agents, tasks, health, llm]) => {
-        if (active) setLabData({ overview, agents: agents.data || [], tasks: tasks.data || [], health, llm });
+    getObservability()
+      .then(snapshot => {
+        if (active) {
+          setLabData(snapshot);
+          setActivityEvents(snapshot.events || []);
+        }
       })
       .catch(() => {
         if (active) setLabError('Unable to load Lab data.');
       });
-    const disconnect = connectLabEvents(() => {
-      Promise.all([getLabOverview(), getAgents(), getTasks(), getSystemHealth(), getLlmStatus()])
-        .then(([overview, agents, tasks, health, llm]) => active && setLabData({ overview, agents: agents.data || [], tasks: tasks.data || [], health, llm }))
+    const disconnect = connectLabEvents(event => {
+      setActivityEvents(previous => [event, ...previous].slice(0, 100));
+      getObservability()
+        .then(snapshot => active && setLabData(snapshot))
         .catch(() => active && setLabError('Lab updates disconnected.'));
     }, () => active && setLabError('Lab updates disconnected.'));
     return () => {
@@ -211,13 +276,7 @@ function App() {
     setTranscript(message);
     setInterimTranscript('');
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcript: message, session_id: sessionId, user_id: userId, input_type: 'text' }),
-      });
-      if (!response.ok) throw new Error('Request failed');
-      const result = await response.json();
+      const result = await submitChat({ transcript: message, session_id: sessionId, user_id: userId, input_type: 'text' });
       setAssistantResponse(result.text || result.response);
       setExecutionEvents(result.task_result?.output?.events || []);
       if (result.response_type === 'voice') {
@@ -392,7 +451,7 @@ function App() {
             type="button"
             className="evi-bg-floating-badge"
             onClick={() => {
-              setLabTab('background');
+              setLabTab('overview');
               setLabOpen(true);
             }}
             title="Click to open background tasks in EVI Lab"
@@ -418,28 +477,19 @@ function App() {
               </div>
 
               <div className="evi-lab-tabs">
-                <button 
-                  className={`evi-lab-tab ${labTab === 'background' ? 'active' : ''}`}
-                  onClick={() => setLabTab('background')}
-                >
-                  Background Tasks
-                </button>
-                <button 
-                  className={`evi-lab-tab ${labTab === 'agents' ? 'active' : ''}`}
-                  onClick={() => setLabTab('agents')}
-                >
-                  Active Agents
-                </button>
-                <button 
-                  className={`evi-lab-tab ${labTab === 'diagnostics' ? 'active' : ''}`}
-                  onClick={() => setLabTab('diagnostics')}
-                >
-                  System Capabilities
-                </button>
+                {LAB_TABS.map(([id, label]) => (
+                  <button
+                    key={id}
+                    className={`evi-lab-tab ${labTab === id ? 'active' : ''}`}
+                    onClick={() => setLabTab(id)}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
 
               <div className="evi-lab-content">
-                {labTab === 'background' && (
+                {labTab === 'overview' && (
                   <div className="lab-card">
                     <div className="lab-card-header">
                       <h3>Background Orchestration</h3>
@@ -492,7 +542,7 @@ function App() {
                   </div>
                 )}
 
-                {labTab === 'diagnostics' && (
+                {labTab === 'overview' && (
                   <div className="lab-card">
                     <div className="lab-card-header">
                       <h3>Desktop Capability Registry</h3>
@@ -508,6 +558,12 @@ function App() {
                     </div>
                   </div>
                 )}
+
+                {labTab === 'tasks' && <LabExtendedPanel tab="tasks" data={labData} activityEvents={activityEvents} />}
+                {labTab !== 'overview' && labTab !== 'agents' && labTab !== 'tasks' && (
+                  <LabExtendedPanel tab={labTab} data={labData} activityEvents={activityEvents} />
+                )}
+
               </div>
             </div>
           </div>

@@ -54,6 +54,14 @@ class InquiryEngine:
     def resolve_question(self, task_id: str, question_id: str, answer: Optional[str], confidence: float = 0.0) -> Optional[InquiryQuestion]:
         return self.manager.resolve_question(task_id, question_id, answer, confidence)
 
+    def get_active_questions(self, task_id: Optional[str] = None) -> List[InquiryQuestion]:
+        if task_id is not None:
+            return [question for question in self.manager.get_active_questions(task_id) if question.status != "resolved"]
+        questions: List[InquiryQuestion] = []
+        for current_questions in self.manager._questions.values():
+            questions.extend(question for question in current_questions if question.status != "resolved")
+        return questions
+
     def should_wait_for_prerequisites(self, question: InquiryQuestion, resolved_prereqs: Dict[str, bool]) -> bool:
         if not question.dependencies:
             return False

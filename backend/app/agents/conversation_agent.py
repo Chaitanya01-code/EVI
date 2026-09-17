@@ -1,16 +1,12 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from app.core.classify import _generate_llm
-from app.llm.router import llm_router
+from app.core.classify import GEMINI_MODEL, _get_client as _get_gemini_client
 
 logger = logging.getLogger(__name__)
 
-_client = None
-
-
 def _get_client():
-    return _client
+    return _get_gemini_client()
 
 
 CONVERSATION_SYSTEM_INSTRUCTION = """
@@ -30,8 +26,15 @@ def _fallback_response() -> str:
 
 
 def _generate_conversation_llm(prompt: str, temperature: float = 0.7):
+    client = _get_client()
+    if client is None:
+        return type("_FallbackResponse", (), {"text": ""})()
     try:
-        return llm_router.generate_sync(prompt, temperature=temperature)
+        return client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config={"temperature": temperature},
+        )
     except Exception:
         logger.exception("Conversation agent failed to generate a response")
         return type("_FallbackResponse", (), {"text": ""})()

@@ -136,7 +136,7 @@ def _fallback_understanding(text: str) -> TaskUnderstandingResult:
             confidence=0.88,
         )
 
-    clauses = [part.strip(" ,") for part in re.split(r"\s*,\s*|\s+and then\s+|\s+and\s+", cleaned, flags=re.IGNORECASE) if part.strip(" ,")]
+    clauses = [part.strip(" ,.") for part in re.split(r"\s*,\s*|\s+and then\s+|\s+and\s+", cleaned, flags=re.IGNORECASE) if part.strip(" ,.")]
     if len(clauses) > 1:
         steps = []
         for clause in clauses:
@@ -314,6 +314,9 @@ def _fallback_understanding(text: str) -> TaskUnderstandingResult:
 
 
 def understand_task(text: str, context: Optional[dict] = None) -> TaskUnderstandingResult:
+    local_result = _fallback_understanding(text)
+    if local_result.task_type != TaskType.UNKNOWN:
+        return local_result
     try:
         response = _generate_llm(
             f"{_TASK_INSTRUCTION}\n\nContext: {context or {}}\nTask: {text}",

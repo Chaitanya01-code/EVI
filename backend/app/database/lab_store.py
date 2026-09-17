@@ -58,6 +58,19 @@ def list_steps(task_id: str) -> List[Dict[str, Any]]:
     return [dict(zip(keys, row)) for row in rows]
 
 
+def list_executions(limit: int, offset: int) -> Tuple[List[Dict[str, Any]], int]:
+    with get_connection() as connection:
+        total = connection.execute("SELECT COUNT(*) FROM task_history_steps").fetchone()[0]
+        rows = connection.execute(
+            """SELECT task_id, step_id, agent_type, action, status, success, verified,
+                      result, error, started_at, completed_at, timestamp
+               FROM task_history_steps ORDER BY timestamp DESC LIMIT %s OFFSET %s""",
+            (limit, offset),
+        ).fetchall()
+    keys = ("task_id", "step_id", "agent", "action", "status", "success", "verified", "result", "error", "started_at", "completed_at", "timestamp")
+    return [dict(zip(keys, row)) for row in rows], total
+
+
 def list_conversations(limit: int, offset: int) -> Tuple[List[Dict[str, Any]], int]:
     with get_connection() as connection:
         total = connection.execute("SELECT COUNT(DISTINCT session_id) FROM conversation_history").fetchone()[0]

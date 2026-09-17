@@ -34,30 +34,40 @@ _computer_controller = DesktopAutomationController()
 
 @app.get("/api/inquiry/status")
 def inquiry_status():
-    return {"status": "ready", "active": False, "max_questions": 5}
+    active_questions = _inquiry_engine.get_active_questions()
+    return {"status": "ready", "active": bool(active_questions), "active_questions": len(active_questions), "max_questions": _inquiry_engine.limits.max_questions_per_task}
 
 
 @app.post("/api/inquiry/start")
 def inquiry_start(payload: dict):
     questions = _inquiry_engine.start(payload)
+    from app.api.lab_events import lab_event_bus
+
+    lab_event_bus.publish({"event": "inquiry_started", "task_id": str(payload.get("task_id") or "unknown-task"), "question_count": len(questions)})
+    for question in questions:
+        lab_event_bus.publish({"event": "question_generated", "task_id": question.task_id, "question_id": question.question_id, "category": question.category.value})
     return {"status": "started", "questions": [q.model_dump(mode="json") for q in questions]}
 
 
 @app.get("/api/inquiry/questions")
 def inquiry_questions():
-    return {"questions": []}
+    return {"questions": [q.model_dump(mode="json") for q in _inquiry_engine.get_active_questions()]}
 
 
 @app.post("/api/inquiry/{question_id}/answer")
 def inquiry_answer(question_id: str, payload: dict):
+    from app.api.lab_events import lab_event_bus
+
+    task_id = str(payload.get("task_id") or "unknown-task")
     resolved = _inquiry_engine.resolve_question(
-        str(payload.get("task_id") or "unknown-task"),
+        task_id,
         question_id,
         payload.get("answer"),
         float(payload.get("confidence", 0.0) or 0.0),
     )
     if resolved is None:
         return {"status": "accepted", "question_id": question_id, "message": "Answer recorded."}
+    lab_event_bus.publish({"event": "decision_resolved", "task_id": task_id, "question_id": question_id})
     return {"status": "resolved", "question_id": question_id, "answer": resolved.answer, "confidence": resolved.confidence}
 
 

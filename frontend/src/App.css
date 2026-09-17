@@ -697,7 +697,9 @@ button {
 .evi-lab-modal {
   width: 100%;
   max-width: 680px;
+  height: 85vh;
   max-height: 85vh;
+  min-height: 0;
   background: #faf6f0;
   border: 1px solid #decbbe;
   border-radius: 20px;
@@ -720,6 +722,7 @@ button {
   padding: 18px 24px;
   background: #f2e7dc;
   border-bottom: 1px solid #dfd1c3;
+  flex: 0 0 auto;
 }
 
 .evi-lab-title {
@@ -771,6 +774,10 @@ button {
   padding: 0 24px;
   background: #f8f1ea;
   gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  flex: 0 0 auto;
 }
 
 .evi-lab-tab {
@@ -783,6 +790,8 @@ button {
   color: #7d6555;
   cursor: pointer;
   transition: all 0.2s ease;
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .evi-lab-tab:hover {
@@ -797,6 +806,8 @@ button {
 .evi-lab-content {
   padding: 24px;
   overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -809,6 +820,7 @@ button {
   padding: 18px;
   box-shadow: 0 2px 6px rgba(100, 60, 20, 0.04);
 }
+
 
 .lab-card-header {
   display: flex;
@@ -888,6 +900,24 @@ button {
   border: 1px solid #eddcd0;
   border-radius: 10px;
   font-size: 13px;
+}
+
+.lab-detail-item {
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: #6b5242;
+  line-height: 1.45;
+}
+
+.lab-detail-item span {
+  min-width: min(180px, 100%);
+}
+
+.lab-detail-item strong {
+  color: #3d2b1f;
+  text-transform: capitalize;
 }
 
 .lab-task-info {
