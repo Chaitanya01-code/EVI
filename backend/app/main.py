@@ -8,6 +8,7 @@ from app.database.connection import close_pool
 from app.database.store import initialize_database_async
 from app.voice.speech_to_text import stt_router
 from app.api.routes.lab import lab_router
+from app.work.api import work_router
 
 
 app = FastAPI()
@@ -23,6 +24,7 @@ app.add_middleware(
 app.include_router(stt_router, prefix="/api/voice")
 app.include_router(chat_router, prefix="/api")
 app.include_router(lab_router, prefix="/api")
+app.include_router(work_router, prefix="/api")
 
 
 @app.on_event("startup")

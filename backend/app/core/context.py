@@ -15,6 +15,7 @@ class WorkingContext(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     conversation_history: List[Dict[str, Any]] = Field(default_factory=list)
     memories: List[Dict[str, Any]] = Field(default_factory=list)
+    current_work_state: Dict[str, Any] = Field(default_factory=dict)
 
     def as_prompt_context(self) -> dict[str, Any]:
         return {
@@ -24,4 +25,5 @@ class WorkingContext(BaseModel):
             "timestamp": self.timestamp.isoformat(),
             "conversation_history": self.conversation_history[-10:],
             "memories": self.memories,
+            "current_work_state": self.current_work_state,
         }
