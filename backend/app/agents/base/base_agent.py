@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
-from app.task.task_models import StructuredTask, TaskExecutionResult, TaskStatus
+from app.task.task_models import AgentStatus, StructuredTask, TaskExecutionResult, TaskStatus
 
 
 class BaseAgent(ABC):
@@ -26,8 +26,14 @@ class BaseAgent(ABC):
 
     def run(self, task: StructuredTask) -> TaskExecutionResult:
         task.status = TaskStatus.PLANNING
+        task.agent_status = AgentStatus.ASSIGNED
         plan = self.plan(self.understand(task))
-        task.status = TaskStatus.EXECUTING
+        task.status = TaskStatus.RUNNING
+        task.agent_status = AgentStatus.RUNNING
         result = self.execute(task, plan)
-        task.status = TaskStatus.VERIFYING
-        return self.verify(task, result)
+        task.status = TaskStatus.VERIFICATION
+        task.agent_status = AgentStatus.RUNNING
+        verified = self.verify(task, result)
+        task.status = verified.status
+        task.agent_status = AgentStatus.COMPLETED if verified.success else AgentStatus.FAILED
+        return verified

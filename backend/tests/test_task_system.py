@@ -5,7 +5,7 @@ from app.agents.browser.agent import BrowserAgent
 from app.agents.cloud.agent import CloudAgent
 from app.agents.coding.agent import CodingAgent
 from app.agents.desktop.agent import DesktopAgent
-from app.task.task_models import TaskType
+from app.task.task_models import AgentStatus, TaskStatus, TaskType
 from app.task.task_router import build_default_registry
 from app.task.task_understanding import build_structured_task, understand_task
 from app.task.task_manager import TaskManager
@@ -60,10 +60,28 @@ class TaskSystemTests(unittest.TestCase):
         registry = build_default_registry()
         task = build_structured_task("Open Chrome and search Google for Docker tutorials.", "user-1", "session-1", "text")
         result = TaskManager(TaskRouter(registry)).execute(task)
-        self.assertFalse(result.success)
-        self.assertIn("multi-step", result.message.lower())
-        self.assertNotEqual(result.agent, "BrowserAgent")
+        self.assertTrue(result.success)
+        self.assertIn("completed", result.message.lower())
+        self.assertEqual(result.agent, "orchestrator")
 
+    def test_complex_multi_step_commands_decompose_into_goal_steps(self):
+        result = understand_task("Open Chrome, go to YouTube, search for Python tutorials, and open the first video.")
+        self.assertEqual(result.task_type, TaskType.MULTI_STEP)
+        self.assertGreaterEqual(len(result.steps), 4)
+        steps = [step["action"] for step in result.steps]
+        self.assertIn("open_app", steps)
+        self.assertIn("navigate", steps)
+        self.assertIn("search", steps)
+
+    def test_complex_multi_step_commands_reference_the_first_search_result_url(self):
+        result = understand_task("Open Chrome, go to YouTube, search for Python tutorials, and open the first video.")
+        self.assertEqual(result.steps[-1]["target"], "{results[0].url}")
+
+    def test_independent_tasks_remain_parallel_when_not_dependent(self):
+        result = understand_task("Open Chrome and Calculator at the same time.")
+        self.assertEqual(result.task_type, TaskType.MULTI_STEP)
+        self.assertGreaterEqual(len(result.steps), 2)
+        self.assertTrue(all(step.get("depends_on", []) == [] for step in result.steps))
 
     def test_structured_task_preserves_context(self):
         task = build_structured_task(
@@ -107,6 +125,18 @@ class TaskSystemTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.agent, "DesktopAgent")
         self.assertEqual(result.status.value, "completed")
+
+    def test_status_and_agent_state_are_separate(self):
+        self.assertEqual(TaskStatus.RUNNING.value, "running")
+        self.assertEqual(TaskStatus.VERIFICATION.value, "verification")
+        self.assertEqual(AgentStatus.UNASSIGNED.value, "unassigned")
+        self.assertEqual(AgentStatus.ASSIGNED.value, "assigned")
+
+    def test_equivalent_open_vs_code_tasks_are_deduplicated(self):
+        manager = TaskManager(TaskRouter(build_default_registry()))
+        task = build_structured_task("Open Visual Studio Code", "user-1", "session-1", "text")
+        self.assertTrue(hasattr(manager, "is_equivalent_active_task"))
+        self.assertFalse(manager.is_equivalent_active_task(task))
 
 
 if __name__ == "__main__":

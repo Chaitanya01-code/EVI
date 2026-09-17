@@ -183,6 +183,11 @@ def save_or_update_task_record(record: TaskRecord) -> None:
              input_type, arguments, error, created_at, started_at, completed_at, timestamp)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (task_id) DO UPDATE SET
+                task_type = EXCLUDED.task_type,
+                agent_type = EXCLUDED.agent_type,
+                category = EXCLUDED.category,
+                action = EXCLUDED.action,
+                target = EXCLUDED.target,
                 status = EXCLUDED.status,
                 success = EXCLUDED.success,
                 verified = EXCLUDED.verified,
@@ -191,6 +196,7 @@ def save_or_update_task_record(record: TaskRecord) -> None:
                 input_type = EXCLUDED.input_type,
                 arguments = EXCLUDED.arguments,
                 error = EXCLUDED.error,
+                created_at = EXCLUDED.created_at,
                 started_at = EXCLUDED.started_at,
                 completed_at = EXCLUDED.completed_at,
                 timestamp = EXCLUDED.timestamp

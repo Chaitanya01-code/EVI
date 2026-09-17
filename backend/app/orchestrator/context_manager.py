@@ -6,20 +6,32 @@ from typing import Any, Dict
 from app.orchestrator.models import ExecutionContext, TaskStep
 
 
-_TOKEN = re.compile(r"\{([A-Za-z0-9_.-]+)\}")
+_TOKEN = re.compile(r"\{([A-Za-z0-9_.\-\[\]]+)\}")
 
 
 class ContextManager:
+    def _resolve_path(self, current: Any, path: str) -> Any:
+        for token in re.findall(r"[A-Za-z0-9_-]+|\[\d+\]", path):
+            if token.startswith("["):
+                index = int(token[1:-1])
+                if not isinstance(current, list):
+                    return ""
+                if not (0 <= index < len(current)):
+                    return ""
+                current = current[index]
+                continue
+            if isinstance(current, dict):
+                current = current.get(token, "")
+            elif hasattr(current, token):
+                current = getattr(current, token)
+            else:
+                return ""
+        return current
+
     def resolve_value(self, value: Any, context: ExecutionContext) -> Any:
         if isinstance(value, str):
             def replace(match: re.Match[str]) -> str:
-                current: Any = context.variables
-                for part in match.group(1).split("."):
-                    if isinstance(current, dict):
-                        current = current.get(part, "")
-                    else:
-                        current = ""
-                return str(current)
+                return str(self._resolve_path(context.variables, match.group(1)))
             return _TOKEN.sub(replace, value)
         if isinstance(value, dict):
             return {key: self.resolve_value(item, context) for key, item in value.items()}

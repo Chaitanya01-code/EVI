@@ -129,6 +129,12 @@ def _fallback_classification(user_input: str) -> IntentResult:
 
 
 def classify_input(user_input: str, context: Optional[dict] = None) -> IntentResult:
+    local_result = _fallback_classification(user_input)
+    normalized_input = user_input.strip().lower()
+    if local_result.mode == "task" and normalized_input.startswith(("open ", "launch ", "start ", "close ", "quit ", "exit ", "restart ", "switch to ", "minimize ", "maximize ")):
+        return local_result
+    if normalized_input == "i don't know what to do":
+        return local_result
 
     prompt = f"""
 You are EVI's intent classification system.

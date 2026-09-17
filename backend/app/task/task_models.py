@@ -20,13 +20,29 @@ class TaskType(str, Enum):
 
 class TaskStatus(str, Enum):
     PENDING = "pending"
+    CREATED = "created"
+    QUEUED = "queued"
     PLANNING = "planning"
-    AWAITING_PERMISSION = "awaiting_permission"
-    EXECUTING = "executing"
-    VERIFYING = "verifying"
+    ASSIGNED = "assigned"
+    RUNNING = "running"
+    WAITING = "waiting"
+    VERIFICATION = "verification"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    BLOCKED = "blocked"
+    AWAITING_PERMISSION = "waiting"
+    EXECUTING = "running"
+    VERIFYING = "verification"
+
+
+class AgentStatus(str, Enum):
+    UNASSIGNED = "unassigned"
+    ASSIGNED = "assigned"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    PENDING = "unassigned"
 
 
 class StructuredTask(BaseModel):
@@ -40,7 +56,8 @@ class StructuredTask(BaseModel):
     action: str
     target: str = ""
     steps: List[Dict[str, Any]] = Field(default_factory=list)
-    status: TaskStatus = TaskStatus.PENDING
+    status: TaskStatus = TaskStatus.CREATED
+    agent_status: AgentStatus = AgentStatus.UNASSIGNED
     confidence: float = Field(default=0, ge=0, le=1)
 
 
@@ -97,5 +114,6 @@ class TaskExecutionResult(BaseModel):
     message: str
     status: TaskStatus
     agent: str
+    agent_status: AgentStatus = AgentStatus.UNASSIGNED
     task: Optional[StructuredTask] = None
     output: Dict[str, Any] = Field(default_factory=dict)

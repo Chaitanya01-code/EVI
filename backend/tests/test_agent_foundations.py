@@ -19,6 +19,17 @@ class AgentFoundationTests(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertEqual(result["results"][0]["title"], "Example")
 
+    def test_browser_search_matches_current_duckduckgo_markup(self):
+        source = '''
+        <a rel="nofollow" class="result-link" href="https://www.youtube.com/results?search_query=Python+tutorials">
+            <span class="result-title">Python tutorials - YouTube</span>
+        </a>
+        '''
+        with patch("app.agents.browser.tools._fetch", return_value=source):
+            result = web_search("Python tutorials")
+        self.assertTrue(result["success"])
+        self.assertEqual(result["results"][0]["title"], "Python tutorials - YouTube")
+
     def test_coding_file_creation_and_command_policy(self):
         with tempfile.TemporaryDirectory() as directory:
             result = create_file("main.py", "print('ok')", directory)

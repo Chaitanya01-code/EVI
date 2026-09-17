@@ -24,6 +24,12 @@ def _fetch(url: str, timeout: float = 10) -> str:
 
 def _normalize_url(target: str) -> str:
     target = target.strip()
+    if target.startswith("//"):
+        return "https:" + target
+    if target.startswith("/"):
+        return "https://duckduckgo.com" + target
+    if target.startswith("www."):
+        return "https://" + target
     if not re.match(r"^[a-z][a-z0-9+.-]*://", target, re.I):
         return "https://" + target
     return target
@@ -49,9 +55,32 @@ def web_search(query: str) -> Dict[str, Any]:
     try:
         document = _fetch(_SEARCH_URL.format(urllib.parse.quote_plus(query)))
         results: List[Dict[str, str]] = []
-        pattern = re.compile(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', re.I | re.S)
-        for raw_url, raw_title in pattern.findall(document)[:10]:
-            results.append({"title": html.unescape(re.sub(r"<[^>]+>", "", raw_title)).strip(), "url": html.unescape(raw_url)})
+        patterns = [
+            re.compile(r'<a[^>]*class="[^"]*(?:result__a|result-link|result-title)[^"]*"[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.I | re.S),
+            re.compile(r'<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.I | re.S),
+        ]
+
+        seen = set()
+        for pattern in patterns:
+            for raw_url, raw_title in pattern.findall(document):
+                href = html.unescape(raw_url).strip()
+                href = _normalize_url(href)
+                if not href or href.startswith("javascript:") or href.startswith("#"):
+                    continue
+                label = html.unescape(re.sub(r"<[^>]+>", " ", raw_title)).strip()
+                label = re.sub(r"\s+", " ", label)
+                if not label:
+                    continue
+                normalized = (href, label)
+                if normalized in seen:
+                    continue
+                seen.add(normalized)
+                results.append({"title": label, "url": href})
+                if len(results) >= 10:
+                    break
+            if len(results) >= 10:
+                break
+
         return _result(bool(results), f"Found {len(results)} results." if results else "I couldn't find search results.", bool(results), query=query, results=results)
     except (OSError, ValueError, urllib.error.URLError):
         return _result(False, "The web search is unavailable right now.", query=query, results=[])

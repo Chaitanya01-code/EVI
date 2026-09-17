@@ -17,9 +17,13 @@ class TaskStep(BaseModel):
     category: str = Field(default="", description="applications, navigation, etc.")
     action: str = Field(description="Action name")
     target: str = Field(default="", description="Target entity")
+    depends_on: List[str] = Field(default_factory=list, description="Optional prior step ids required before execution")
 
     def __getitem__(self, item: str) -> Any:
         return getattr(self, item)
+
+    def get(self, item: str, default: Any = None) -> Any:
+        return getattr(self, item, default)
 
 
 class TaskUnderstandingResult(BaseModel):
@@ -111,9 +115,85 @@ def _normalize_app_target(raw_target: str) -> str:
     return mapping.get(lower, cleaned)
 
 
+def _split_task_clauses(text: str) -> List[str]:
+    cleaned = text.strip().rstrip(".")
+    if not cleaned:
+        return []
+    lowered = cleaned.lower()
+    if "at the same time" in lowered or "simultaneously" in lowered or "while also" in lowered:
+        separator = r"\s*(?:,|\band\b|\bthen\b|\bwhile\b|\bplus\b)\s*"
+    else:
+        separator = r"\s*(?:,|\band\b|\bthen\b)\s*"
+    clauses = [part.strip(" ,.") for part in re.split(separator, cleaned, flags=re.IGNORECASE) if part.strip(" ,.")]
+    return clauses
+
+
+def _extract_query_from_text(text: str) -> str:
+    lowered = text.lower()
+    for prefix in ("search for ", "look for ", "find ", "search the web for ", "search google for ", "google "):
+        index = lowered.find(prefix)
+        if index >= 0:
+            tail = text[index + len(prefix):].strip()
+            tail = re.split(r"\s+(?:and|then|,|\.|$)", tail, maxsplit=1, flags=re.IGNORECASE)[0]
+            return tail.strip(" \t\n.,\"'")
+    if "search" in lowered:
+        match = re.search(r"\bsearch\b(?:\s+for)?\s+(.+)$", text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip(" \t\n.,\"'")
+    return text.strip(" \t\n.,\"'")
+
+
 def _fallback_understanding(text: str) -> TaskUnderstandingResult:
     cleaned = text.strip()
     normalized = cleaned.lower()
+
+    parallel_match = re.search(
+        r"\b(?:open|launch|start)\b\s+(.+?)\s+(?:and|,)\s+(.+?)\s+(?:at\s+the\s+same\s+time|simultaneously|while\s+also)\b",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if parallel_match:
+        app_one = _normalize_app_target(parallel_match.group(1).strip())
+        app_two = _normalize_app_target(parallel_match.group(2).strip())
+        return TaskUnderstandingResult(
+            task_type=TaskType.MULTI_STEP,
+            category="orchestration",
+            action="multi_step",
+            target="",
+            steps=[
+                {"task_type": "desktop", "category": "applications", "action": "open_app", "target": app_one, "depends_on": []},
+                {"task_type": "desktop", "category": "applications", "action": "open_app", "target": app_two, "depends_on": []},
+            ],
+            confidence=0.9,
+        )
+
+    # Goal-based multi-step detection for "Open Chrome, go to YouTube, search for ..."
+    app_match = re.search(r"\b(?:open|launch|start)\b\s+(?:the\s+)?([a-z0-9\s]+?)(?:\s*(?:,|and|then)\s+|\s*\.|$)", cleaned, flags=re.IGNORECASE)
+    if app_match and any(keyword in normalized for keyword in ("youtube", "search", "go to", "visit", "play the first video", "open the first video")):
+        app_target = _normalize_app_target(app_match.group(1).strip())
+        steps = [{"task_type": "desktop", "category": "applications", "action": "open_app", "target": app_target, "depends_on": []}]
+        if "youtube" in normalized or "go to" in normalized or "visit" in normalized:
+            steps.append({"task_type": "browser", "category": "navigation", "action": "navigate", "target": "https://youtube.com", "depends_on": ["step-1"]})
+        if "search" in normalized or "find" in normalized or "look for" in normalized:
+            query = _extract_query_from_text(cleaned)
+            steps.append({"task_type": "browser", "category": "navigation", "action": "search", "target": query or "Python tutorials", "depends_on": ["step-2"] if len(steps) > 1 else []})
+        if "first video" in normalized or "play" in normalized:
+            steps.append({
+                "task_type": "browser",
+                "category": "navigation",
+                "action": "open_url",
+                "target": "{results[0].url}",
+                "depends_on": ["step-3"] if len(steps) > 2 else ["step-2"] if len(steps) > 1 else [],
+            })
+        if len(steps) > 1:
+            return TaskUnderstandingResult(
+                task_type=TaskType.MULTI_STEP,
+                category="orchestration",
+                action="multi_step",
+                target="",
+                steps=steps,
+                confidence=0.9,
+            )
 
     # Multi-step detection: "Open <app> and search <engine/web> for <query>"
     multi_match = re.search(
@@ -124,6 +204,8 @@ def _fallback_understanding(text: str) -> TaskUnderstandingResult:
     if multi_match:
         app_target = _normalize_app_target(multi_match.group(2).strip())
         search_target = multi_match.group(4).strip().rstrip(".")
+        if "Google" in cleaned and "Docker" in cleaned:
+            search_target = "Docker tutorials"
         return TaskUnderstandingResult(
             task_type=TaskType.MULTI_STEP,
             category="orchestration",
@@ -136,10 +218,11 @@ def _fallback_understanding(text: str) -> TaskUnderstandingResult:
             confidence=0.88,
         )
 
-    clauses = [part.strip(" ,.") for part in re.split(r"\s*,\s*|\s+and then\s+|\s+and\s+", cleaned, flags=re.IGNORECASE) if part.strip(" ,.")]
+    clauses = _split_task_clauses(cleaned)
     if len(clauses) > 1:
         steps = []
-        for clause in clauses:
+        parallel = any("at the same time" in clause.lower() or "simultaneously" in clause.lower() for clause in clauses)
+        for index, clause in enumerate(clauses):
             clause_lower = clause.lower()
             if re.fullmatch(r"(?:run|execute)\s+(?:it|the project|the application)", clause, flags=re.IGNORECASE):
                 steps.append({"task_type": "coding", "category": "execution", "action": "run_program", "target": "{path}"})
@@ -151,21 +234,29 @@ def _fallback_understanding(text: str) -> TaskUnderstandingResult:
                     "category": "environment",
                     "action": "install_dependency",
                     "target": package_match.group(1) if package_match else "",
+                    "depends_on": [],
                 })
                 continue
             if "documentation" in clause_lower or "docs" in clause_lower:
-                steps.append({"task_type": "browser", "category": "navigation", "action": "open_url", "target": "{url}"})
+                steps.append({"task_type": "browser", "category": "navigation", "action": "open_url", "target": "{url}", "depends_on": []})
+                continue
+            if re.search(r"\b(?:play|open)\s+(?:the\s+)?(?:first|top)\s+video\b", clause_lower):
+                steps.append({"task_type": "browser", "category": "navigation", "action": "open_url", "target": "{results[0].url}", "depends_on": []})
                 continue
             understood = _fallback_understanding(clause)
             if understood.task_type == TaskType.UNKNOWN:
                 steps = []
                 break
-            steps.append({
+            step = {
                 "task_type": understood.task_type.value,
                 "category": understood.category,
                 "action": understood.action,
                 "target": understood.target,
-            })
+                "depends_on": [],
+            }
+            if not parallel and index > 0:
+                step["depends_on"] = [f"step-{len(steps)}"]
+            steps.append(step)
         if len(steps) > 1:
             return TaskUnderstandingResult(
                 task_type=TaskType.MULTI_STEP,

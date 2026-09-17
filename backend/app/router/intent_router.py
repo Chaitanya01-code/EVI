@@ -27,8 +27,8 @@ _task_manager = TaskManager(TaskRouter(build_default_registry()), event_callback
 
 
 async def _route_response(context: WorkingContext, classification: IntentResult):
+    loop = asyncio.get_running_loop()
     if classification.mode == "conversation":
-        loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
             None,
             generate_conversation_response,
@@ -40,7 +40,6 @@ async def _route_response(context: WorkingContext, classification: IntentResult)
     if classification.mode == "unclear":
         return "I wasn't sure what you meant. Could you rephrase that or tell me what you want me to do?", None
     if classification.mode == "task":
-        loop = asyncio.get_running_loop()
         task = await loop.run_in_executor(
             None,
             build_structured_task,
@@ -51,25 +50,42 @@ async def _route_response(context: WorkingContext, classification: IntentResult)
             context.as_prompt_context(),
         )
 
+        agent = _task_manager.router.route(task)
+        agent_name = agent.__class__.__name__ if agent is not None else "unassigned"
         initial_record = TaskRecord(
             task_id=task.task_id,
             session_id=task.session_id,
             user_id=task.user_id,
             task_type=task.task_type.value,
-            agent_type="pending",
+            agent_type=agent_name,
             category=task.category,
             action=task.action,
             target=task.target,
-            status=TaskStatus.PENDING.value,
+            status=TaskStatus.CREATED.value,
             success=False,
             verified=False,
             message="Task initialized",
             original_text=task.original_text,
             input_type=task.input_type,
+            created_at=datetime.now(timezone.utc),
+            started_at=datetime.now(timezone.utc),
             timestamp=datetime.now(timezone.utc),
         )
         asyncio.create_task(save_or_update_task_record_async(initial_record))
-        lab_event_bus.publish({"event": "task_created", "task_id": task.task_id, "task_type": task.task_type.value, "input_type": task.input_type})
+        lab_event_bus.publish({"event": "task_created", "task_id": task.task_id, "task_type": task.task_type.value, "input_type": task.input_type, "agent": agent_name})
+
+        if _task_manager.is_equivalent_active_task(task):
+            blocked_result = TaskExecutionResult(
+                success=False,
+                verified=False,
+                message="An equivalent task is already running for this session.",
+                status=TaskStatus.BLOCKED,
+                agent=agent_name,
+                task=task,
+                output={"blocked": True},
+            )
+            blocked_result.agent_status = task.agent_status
+            return blocked_result.message, blocked_result
 
         result: TaskExecutionResult = await loop.run_in_executor(
             None, _task_manager.execute, task
@@ -92,6 +108,7 @@ async def _route_response(context: WorkingContext, classification: IntentResult)
             input_type=task.input_type,
             arguments=result.output.get("variables", {}),
             error=None if result.success else result.message,
+            started_at=datetime.now(timezone.utc),
             completed_at=datetime.now(timezone.utc),
             timestamp=datetime.now(timezone.utc),
         )
