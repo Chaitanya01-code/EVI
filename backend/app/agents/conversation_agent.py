@@ -2,8 +2,16 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from app.core.classify import _generate_llm
+from app.llm.router import llm_router
 
 logger = logging.getLogger(__name__)
+
+_client = None
+
+
+def _get_client():
+    return _client
+
 
 CONVERSATION_SYSTEM_INSTRUCTION = """
 You are EVI, a friendly personal desktop AI assistant.
@@ -21,6 +29,14 @@ def _fallback_response() -> str:
     return "I'm here with you and ready to chat. What are you working on?"
 
 
+def _generate_conversation_llm(prompt: str, temperature: float = 0.7):
+    try:
+        return llm_router.generate_sync(prompt, temperature=temperature)
+    except Exception:
+        logger.exception("Conversation agent failed to generate a response")
+        return type("_FallbackResponse", (), {"text": ""})()
+
+
 def generate_conversation_response(
     transcript: str,
     conversation_history: Optional[List[Dict[str, Any]]] = None,
@@ -34,7 +50,7 @@ def generate_conversation_response(
         f"User transcript:\n{transcript}"
     )
     try:
-        response = _generate_llm(prompt, temperature=0.7)
+        response = _generate_conversation_llm(prompt, temperature=0.7)
         final_text = (response.text or "").strip()
         return final_text or _fallback_response()
     except Exception:

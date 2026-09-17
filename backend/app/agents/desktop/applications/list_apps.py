@@ -84,24 +84,23 @@ def list_apps() -> List[Application]:
 
     # 3. Standard system executables discovered via PATH
     common_cli_candidates = (
-        ("chrome", "chrome.exe"),
-        ("code", "Code.exe"),
-        ("notepad", "notepad.exe"),
-        ("calc", "CalculatorApp.exe"),
-        ("calculator", "CalculatorApp.exe"),
-        ("explorer", "explorer.exe"),
-        ("spotify", "Spotify.exe"),
-        ("discord", "Discord.exe"),
-        ("cmd", "cmd.exe"),
-        ("powershell", "powershell.exe"),
-        ("msedge", "msedge.exe"),
+        ("chrome", "Google Chrome", "chrome.exe"),
+        ("code", "Visual Studio Code", "Code.exe"),
+        ("notepad", "Notepad", "notepad.exe"),
+        ("calc", "Calculator", "CalculatorApp.exe"),
+        ("calculator", "Calculator", "CalculatorApp.exe"),
+        ("explorer", "File Explorer", "explorer.exe"),
+        ("spotify", "Spotify", "Spotify.exe"),
+        ("discord", "Discord", "Discord.exe"),
+        ("cmd", "Command Prompt", "cmd.exe"),
+        ("powershell", "PowerShell", "powershell.exe"),
+        ("msedge", "Microsoft Edge", "msedge.exe"),
     )
-    for cmd_name, proc_name in common_cli_candidates:
+    for cmd_name, display_name, proc_name in common_cli_candidates:
         resolved = shutil.which(cmd_name) or shutil.which(f"{cmd_name}.exe")
         if resolved:
             norm = normalize_name(cmd_name)
             if norm not in apps:
-                display_name = "Visual Studio Code" if cmd_name == "code" else cmd_name.capitalize()
                 apps[norm] = Application(name=display_name, command=resolved, process_name=proc_name)
 
     return sorted(apps.values(), key=lambda app: app.name.lower())

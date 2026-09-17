@@ -136,14 +136,25 @@ def _fallback_understanding(text: str) -> TaskUnderstandingResult:
             confidence=0.88,
         )
 
-    # Generic multi-step detection. Each clause is independently understood so
-    # the orchestrator, rather than this layer, owns execution and dependencies.
     clauses = [part.strip(" ,") for part in re.split(r"\s*,\s*|\s+and then\s+|\s+and\s+", cleaned, flags=re.IGNORECASE) if part.strip(" ,")]
     if len(clauses) > 1:
         steps = []
         for clause in clauses:
+            clause_lower = clause.lower()
             if re.fullmatch(r"(?:run|execute)\s+(?:it|the project|the application)", clause, flags=re.IGNORECASE):
                 steps.append({"task_type": "coding", "category": "execution", "action": "run_program", "target": "{path}"})
+                continue
+            if re.search(r"\binstall\b", clause_lower):
+                package_match = re.search(r"\binstall\b\s+([a-z0-9_.-]+)", clause, flags=re.IGNORECASE)
+                steps.append({
+                    "task_type": "coding",
+                    "category": "environment",
+                    "action": "install_dependency",
+                    "target": package_match.group(1) if package_match else "",
+                })
+                continue
+            if "documentation" in clause_lower or "docs" in clause_lower:
+                steps.append({"task_type": "browser", "category": "navigation", "action": "open_url", "target": "{url}"})
                 continue
             understood = _fallback_understanding(clause)
             if understood.task_type == TaskType.UNKNOWN:
@@ -286,14 +297,16 @@ def _fallback_understanding(text: str) -> TaskUnderstandingResult:
             confidence=0.75,
         )
 
-    # Cloud operations
     if re.search(r"\b(deploy|aws|azure|gcp|docker|cloud)\b", normalized):
         action = "check_deployment" if ("check" in normalized or "status" in normalized) else "deploy"
+        target = "AWS" if "aws" in normalized else ("Docker" if "docker" in normalized else "")
+        if action == "check_deployment" and "deployment" in cleaned.lower() and target:
+            target = target
         return TaskUnderstandingResult(
             task_type=TaskType.CLOUD,
             category="deployment",
             action=action,
-            target="AWS" if "aws" in normalized else ("Docker" if "docker" in normalized else ""),
+            target=target,
             confidence=0.75,
         )
 
@@ -307,11 +320,14 @@ def understand_task(text: str, context: Optional[dict] = None) -> TaskUnderstand
             response_schema=TaskUnderstandingResult,
         )
         parsed = TaskUnderstandingResult.model_validate_json(response.text)
-        # Ensure target normalization if target is an app alias.
         if parsed.task_type == TaskType.DESKTOP and parsed.category == "applications":
             parsed.target = _normalize_app_target(parsed.target)
-        if parsed.task_type == TaskType.CODING and parsed.action == "create_project" and parsed.target.lower() in {"python project", "fastapi application", "python", "fastapi"}:
-            parsed.target = ""
+        if parsed.task_type == TaskType.CODING and parsed.action in {"create_project", "debug_code"}:
+            cleaned_target = (parsed.target or "").strip().lower()
+            if cleaned_target in {"python project", "fastapi application", "python", "fastapi", "python code"}:
+                parsed.target = ""
+        if parsed.task_type == TaskType.CLOUD and parsed.action == "check_deployment":
+            parsed.target = re.sub(r"\s+deployment$", "", (parsed.target or "")).strip()
         return parsed
     except Exception:
         logger.exception("Task understanding failed; using local fallback")
