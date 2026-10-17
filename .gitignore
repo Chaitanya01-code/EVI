@@ -5,6 +5,9 @@ __pycache__/
 venv/
 node_modules/
 dist/
+build/
+release/
+*.spec
 backend/data/
 *.db
 npm-debug.log*

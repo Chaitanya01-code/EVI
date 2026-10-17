@@ -1,0 +1,24 @@
+{
+  "mode": "development",
+  "backend": {
+    "directory": "backend",
+    "host": "127.0.0.1",
+    "port": 8000,
+    "app": "app.main:app"
+  },
+  "frontend": {
+    "host": "127.0.0.1",
+    "port": 5173,
+    "directory": "frontend",
+    "dist_directory": "frontend/dist"
+  },
+  "window": {
+    "title": "EVI",
+    "width": 1280,
+    "height": 800,
+    "resizable": true
+  },
+  "startup_timeout_seconds": 30,
+  "poll_interval_seconds": 0.5,
+  "shutdown_timeout_seconds": 10
+}

@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import './App.css';
 import { connectLabEvents, getObservability, submitChat } from './services/labApi';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { API_BASE_URL } from './config/api';
 
 function toPcm16(input, inputSampleRate) {
   const sampleRateRatio = inputSampleRate / 16000;
