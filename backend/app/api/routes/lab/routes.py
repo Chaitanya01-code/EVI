@@ -21,6 +21,7 @@ from app.task.task_router import build_default_registry
 from app.llm.router import llm_router
 from app.phase3.inquiry.inquiry_engine import InquiryEngine
 from app.phase4.computer.controller import DesktopAutomationController
+from app.phase4.computer.kill_switch import kill_switch
 from app.work.context.service import current_work_state_service
 
 lab_router = APIRouter(prefix="/lab", tags=["EVI Lab"])
@@ -239,6 +240,8 @@ def observability() -> Dict[str, Any]:
 @lab_router.get("/system/health", summary="Check EVI component health", response_model=HealthResponse)
 def health() -> Dict[str, Any]:
     components = {"api": "healthy", "agent_registry": "healthy", "orchestrator": "healthy", "llm": "configured" if os.getenv("GEMINI_API_KEY") else "unconfigured", "stt": "configured" if os.getenv("DEEPGRAM_API_KEY") else "unconfigured"}
+    computer_control = kill_switch.status()
+    components["computer_control"] = computer_control["state"]
     try:
         with get_connection() as connection:
             connection.execute("SELECT 1")
@@ -251,7 +254,7 @@ def health() -> Dict[str, Any]:
     except Exception:
         components["tts"] = "unavailable"
     status = "healthy" if components["database"] == "healthy" else "degraded"
-    return {"status": status, "timestamp": _now(), "components": components}
+    return {"status": status, "timestamp": _now(), "components": components, "kill_switch": computer_control}
 
 
 @lab_router.get("/llm/status", summary="Get safe LLM fallback status", response_model=Dict[str, Any])

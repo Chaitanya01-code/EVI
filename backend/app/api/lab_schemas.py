@@ -22,6 +22,7 @@ class HealthResponse(BaseModel):
     status: str
     timestamp: datetime
     components: Dict[str, str]
+    kill_switch: Dict[str, Any] = Field(default_factory=dict)
 
 
 class EventResponse(BaseModel):

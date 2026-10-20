@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -55,9 +56,9 @@ Task Types and Categories:
                "Restart VS Code" -> action: "restart_app", target: "Visual Studio Code"
    - category "windows": switch_window, minimize_window, maximize_window, resize_window, move_window
      Examples: "Switch to Chrome", "Minimize VS Code", "Maximize Notepad"
-   - category "files": open_file, copy_file, move_file, rename_file, delete_file, search_file
-     Examples: "Open resume.pdf", "Copy report.pdf to Documents", "Rename notes.txt to final_notes.txt"
-   - category "folders": create_folder, open_folder, rename_folder, move_folder, delete_folder
+   - category "files": open_file, open_in_explorer, copy_file, move_file, rename_file, delete_file, search_file, list_dir, search_files, search_in_files, file_info, read_file, create_file, write_file, create_docx, create_xlsx, bulk_file_operation
+     Examples: "Open resume.pdf", "Find my resume PDF", "Summarize report.docx", "Copy report.pdf to Documents"
+   - category "folders": create_folder, open_folder, rename_folder, move_folder, delete_folder, list_dir
      Examples: "Create a folder called EVI in Documents", "Open my Projects folder"
    - category "system": shutdown, restart, lock, sleep
    - category "input": mouse_click, mouse_move, type_text, press_key
@@ -147,6 +148,101 @@ def _fallback_understanding(text: str) -> TaskUnderstandingResult:
     cleaned = text.strip()
     normalized = cleaned.lower()
 
+    file_search_match = re.fullmatch(
+        r"(?:please\s+)?(?:find|locate|search for)\s+(?:my\s+)?(.+?\.(?:pdf|docx?|xlsx?|pptx?|txt|md|csv))",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if file_search_match:
+        return TaskUnderstandingResult(
+            task_type=TaskType.DESKTOP,
+            category="files",
+            action="search_file",
+            target=file_search_match.group(1).strip(),
+            confidence=0.92,
+        )
+    extension_search_match = re.fullmatch(
+        r"(?:please\s+)?(?:find|locate|search for)\s+(?:my\s+)?(.+?)\s+(pdf|docx?|xlsx?|pptx?|txt|md|csv)",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if extension_search_match:
+        return TaskUnderstandingResult(
+            task_type=TaskType.DESKTOP,
+            category="files",
+            action="search_file",
+            target=f"{extension_search_match.group(1).strip()}.{extension_search_match.group(2)}",
+            confidence=0.92,
+        )
+
+    summarize_match = re.fullmatch(
+        r"(?:please\s+)?summari[sz]e\s+(?:this\s+)?(.+\.(?:docx?|pdf|xlsx?|pptx?|txt|md))",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if summarize_match:
+        return TaskUnderstandingResult(
+            task_type=TaskType.DESKTOP,
+            category="files",
+            action="read_file",
+            target=summarize_match.group(1).strip(),
+            confidence=0.9,
+        )
+
+    create_folder_request = re.fullmatch(
+        r"(?:please\s+)?create\s+(?:a\s+)?folder\s+(?:called|named)\s+(.+?)\s+(?:on|in|at)\s+(desktop|documents|downloads)",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if create_folder_request:
+        return TaskUnderstandingResult(
+            task_type=TaskType.DESKTOP,
+            category="folders",
+            action="create_folder",
+            target=create_folder_request.group(1).strip().strip("'\""),
+            confidence=0.9,
+        )
+
+    bulk_match = re.fullmatch(
+        r"(?:please\s+)?(copy|move|delete|rename)\s+all\s+(.+?)\s+from\s+(.+?)(?:\s+to\s+(.+))?",
+        cleaned.rstrip("."),
+        flags=re.IGNORECASE,
+    )
+    if bulk_match:
+        return TaskUnderstandingResult(
+            task_type=TaskType.DESKTOP,
+            category="files",
+            action="bulk_file_operation",
+            target=cleaned,
+            confidence=0.9,
+        )
+
+    summarize_without_filename = re.fullmatch(
+        r"(?:please\s+)?summari[sz]e\s+(?:this\s+)?(?:document|docx|pdf|spreadsheet|file)",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if summarize_without_filename:
+        return TaskUnderstandingResult(
+            task_type=TaskType.DESKTOP,
+            category="files",
+            action="list_dir",
+            target=str(Path.home() / "Documents"),
+            confidence=0.72,
+        )
+
+    if re.fullmatch(
+        r"(?:what|which)\s+(?:apps|applications)\s+(?:are\s+)?running\??",
+        normalized,
+    ) or re.fullmatch(r"(?:show|list)\s+(?:me\s+)?(?:the\s+)?running\s+(?:apps|applications)\??", normalized):
+        return TaskUnderstandingResult(
+            task_type=TaskType.DESKTOP,
+            category="applications",
+            action="list_running_apps",
+            target="",
+            confidence=0.95,
+        )
+
     parallel_match = re.search(
         r"\b(?:open|launch|start)\b\s+(.+?)\s+(?:and|,)\s+(.+?)\s+(?:at\s+the\s+same\s+time|simultaneously|while\s+also)\b",
         cleaned,
@@ -216,6 +312,27 @@ def _fallback_understanding(text: str) -> TaskUnderstandingResult:
                 {"task_type": "browser", "category": "navigation", "action": "search", "target": search_target},
             ],
             confidence=0.88,
+        )
+
+    multiple_apps_match = re.fullmatch(
+        r"\s*(?:open|launch|start)\s+(?:the\s+)?(.+?)\s+(?:and|,)\s+"
+        r"(?:(?:open|launch|start)\s+)?(.+?)\s*[.!?]*\s*",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if multiple_apps_match:
+        app_one = _normalize_app_target(multiple_apps_match.group(1).strip())
+        app_two = _normalize_app_target(multiple_apps_match.group(2).strip())
+        return TaskUnderstandingResult(
+            task_type=TaskType.MULTI_STEP,
+            category="orchestration",
+            action="multi_step",
+            target="",
+            steps=[
+                {"task_type": "desktop", "category": "applications", "action": "open_app", "target": app_one, "depends_on": []},
+                {"task_type": "desktop", "category": "applications", "action": "open_app", "target": app_two, "depends_on": []},
+            ],
+            confidence=0.9,
         )
 
     clauses = _split_task_clauses(cleaned)
@@ -314,6 +431,20 @@ def _fallback_understanding(text: str) -> TaskUnderstandingResult:
             action="restart_app",
             target=target,
             confidence=0.86,
+        )
+
+    force_close_match = re.search(
+        r"\bforce(?:fully)?[\s-]+close\b\s+(?:the\s+)?(.+?)(?:\.|$)",
+        normalized,
+    )
+    if force_close_match:
+        target = _normalize_app_target(force_close_match.group(1))
+        return TaskUnderstandingResult(
+            task_type=TaskType.DESKTOP,
+            category="applications",
+            action="force_close_app",
+            target=target,
+            confidence=0.9,
         )
 
     # Desktop: Close application
@@ -448,4 +579,3 @@ def build_structured_task(
         steps=[s.model_dump() if hasattr(s, "model_dump") else s for s in understood.steps],
         confidence=understood.confidence,
     )
-

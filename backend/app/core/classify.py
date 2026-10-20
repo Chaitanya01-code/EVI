@@ -1,17 +1,24 @@
 import os
 import logging
 import re
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from typing import Literal, Optional
+from uuid import uuid4
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+from app.api.lab_events import lab_event_bus
 from app.llm.models import LLMFailure
 from app.llm.router import llm_router
+from app.training.intent_logger import is_training_logging_enabled, log_intent
 
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+_training_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="intent-training-log")
 
 
 # --------------------------------------------------
@@ -128,12 +135,82 @@ def _fallback_classification(user_input: str) -> IntentResult:
     )
 
 
+def _dispatch_intent_log(
+    user_input: str,
+    context: Optional[dict],
+    result: IntentResult,
+    classifier_used: str,
+    latency_ms: float,
+    error: Optional[str],
+) -> None:
+    try:
+        if not is_training_logging_enabled():
+            return
+        source = context.get("input_type", "text") if isinstance(context, dict) else "text"
+        if source not in ("text", "voice"):
+            source = "text"
+        _training_executor.submit(
+            _write_intent_log,
+            user_input,
+            context,
+            result,
+            source,
+            classifier_used,
+            latency_ms,
+            error,
+        )
+    except Exception:
+        logger.warning("Unable to schedule intent training log", exc_info=True)
+
+
+def _write_intent_log(
+    user_input: str,
+    context: Optional[dict],
+    result: IntentResult,
+    source: str,
+    classifier_used: str,
+    latency_ms: float,
+    error: Optional[str],
+) -> None:
+    try:
+        log_intent(
+            user_text=user_input,
+            context_summary=context,
+            source=source,
+            classifier_used=classifier_used,
+            predicted=result.model_dump(),
+            latency_ms=latency_ms,
+            error=error,
+        )
+    except Exception:
+        logger.warning("Unable to write intent training log", exc_info=True)
+    try:
+        lab_event_bus.publish({
+            "event": "intent_classified",
+            "id": str(uuid4()),
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "classifier_used": classifier_used,
+            "predicted": result.intent,
+        })
+    except Exception:
+        logger.warning("Unable to publish intent_classified event", exc_info=True)
+
+
 def classify_input(user_input: str, context: Optional[dict] = None) -> IntentResult:
+    started_at = time.perf_counter()
     local_result = _fallback_classification(user_input)
     normalized_input = user_input.strip().lower()
     if local_result.mode == "task" and normalized_input.startswith(("open ", "launch ", "start ", "close ", "quit ", "exit ", "restart ", "switch to ", "minimize ", "maximize ")):
+        _dispatch_intent_log(
+            user_input, context, local_result, "local_fallback",
+            (time.perf_counter() - started_at) * 1000, None,
+        )
         return local_result
     if normalized_input == "i don't know what to do":
+        _dispatch_intent_log(
+            user_input, context, local_result, "local_fallback",
+            (time.perf_counter() - started_at) * 1000, None,
+        )
         return local_result
 
     prompt = f"""
@@ -197,10 +274,20 @@ User input:
             f"Conversation context:\n{context or {}}\n\n{prompt}",
             response_schema=IntentResult,
         )
-        return IntentResult.model_validate_json(response.text)
-    except Exception:
+        result = IntentResult.model_validate_json(response.text)
+        _dispatch_intent_log(
+            user_input, context, result, "gemini",
+            (time.perf_counter() - started_at) * 1000, None,
+        )
+        return result
+    except Exception as error:
         logger.exception("LLM classification failed; using local fallback")
-        return _fallback_classification(user_input)
+        result = _fallback_classification(user_input)
+        _dispatch_intent_log(
+            user_input, context, result, "local_fallback",
+            (time.perf_counter() - started_at) * 1000, str(error),
+        )
+        return result
 
 
 def generate_response(user_input: str, result: IntentResult, context: Optional[dict] = None) -> str:

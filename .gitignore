@@ -9,6 +9,9 @@ build/
 release/
 *.spec
 backend/data/
+data/training/
+data/audit/
+data/kill_switch
 *.db
 npm-debug.log*
 yarn-debug.log*

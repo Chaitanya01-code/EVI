@@ -11,6 +11,7 @@ from app.task.task_models import (
 )
 from app.orchestrator.orchestrator import MultiAgentOrchestrator
 from app.task.task_router import TaskRouter
+from app.safety.executor_gate import run_guarded_sync
 
 
 class TaskManager:
@@ -53,6 +54,56 @@ class TaskManager:
             return False
 
     def execute(self, task: StructuredTask) -> TaskExecutionResult:
+        file_actions = {
+            "open_file", "copy_file", "move_file", "rename_file", "delete_file", "search_file",
+            "list_dir", "search_files", "search_in_files", "file_info", "read_file", "create_file",
+            "write_file", "create_docx", "create_xlsx", "open_in_explorer", "bulk_file_operation",
+            "create_folder", "open_folder", "rename_folder", "move_folder", "delete_folder",
+        }
+        tool_gated_file_task = (
+            task.task_type == TaskType.DESKTOP
+            and (task.category in {"files", "folders"} or task.action in file_actions)
+        )
+        if task.task_type == TaskType.MULTI_STEP and any(
+            step.get("category") in {"files", "folders"} or step.get("action") in file_actions
+            for step in task.steps
+        ):
+            tool_gated_file_task = True
+        if tool_gated_file_task:
+            result = self._execute(task)
+            if result.output.get("approval_id"):
+                task.status = TaskStatus.AWAITING_PERMISSION
+                result.status = TaskStatus.AWAITING_PERMISSION
+            return result
+
+        action = {
+            "tool": task.action or task.task_type.value,
+            "params": {"target": task.target, "task_type": task.task_type.value},
+        }
+        gated = run_guarded_sync(action, "task_manager", lambda: self._execute(task))
+        if gated["status"] == "ok":
+            return gated["result"]
+        status = (
+            TaskStatus.AWAITING_PERMISSION
+            if gated["status"] == "needs_approval"
+            else TaskStatus.BLOCKED
+        )
+        task.status = status
+        output = {"blocked": True, "gate_status": gated["status"]}
+        if gated.get("approval_id"):
+            output["approval_id"] = gated["approval_id"]
+            output["approval_summary"] = gated.get("summary")
+        return TaskExecutionResult(
+            success=False,
+            verified=False,
+            message=gated.get("summary") or gated.get("error") or gated["status"],
+            status=status,
+            agent="task_manager",
+            task=task,
+            output=output,
+        )
+
+    def _execute(self, task: StructuredTask) -> TaskExecutionResult:
         key = self._task_key(task)
         if key in self._active_task_keys and self._active_task_keys != {key}:
             return TaskExecutionResult(

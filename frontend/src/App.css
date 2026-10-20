@@ -532,6 +532,43 @@ button {
   z-index: 40;
 }
 
+.evi-kill-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #8c342d;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.evi-stop-btn {
+  min-width: 54px;
+  padding: 7px 10px;
+  border: 1px solid #a92f2a;
+  border-radius: 8px;
+  background: #c43b35;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  box-shadow: 0 2px 7px rgba(125, 35, 30, 0.18);
+}
+
+.evi-stop-btn:hover {
+  background: #a92f2a;
+}
+
+.evi-stop-btn.evi-stop-active {
+  border-color: #6f211d;
+  background: #8f2722;
+}
+
+.evi-stop-btn:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .evi-lab-btn {
   display: inline-flex;
   align-items: center;
@@ -931,4 +968,3 @@ button {
   color: #2e9354;
   font-weight: 600;
 }
-

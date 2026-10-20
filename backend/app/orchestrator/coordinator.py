@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, Optional
 from app.orchestrator.models import AgentResult, AgentRequest, ExecutionContext, StepStatus, TaskStep
 from app.task.task_models import StructuredTask, TaskType
 from app.task.task_router import TaskRouter
+from app.safety.executor_gate import run_guarded_sync
 
 
 _PROTECTED_ACTIONS = {
@@ -41,7 +42,17 @@ class Coordinator:
 
     def execute(self, step: TaskStep, context: ExecutionContext) -> AgentResult:
         context.current_step = step.step_id
-        denied = self._policy_denied(step, context)
+        file_tool_actions = {
+            "open_file", "copy_file", "move_file", "rename_file", "delete_file", "search_file",
+            "list_dir", "search_files", "search_in_files", "file_info", "read_file", "create_file",
+            "write_file", "create_docx", "create_xlsx", "open_in_explorer", "bulk_file_operation",
+            "create_folder", "open_folder", "rename_folder", "move_folder", "delete_folder",
+        }
+        tool_gated_file_step = (
+            step.agent_type == TaskType.DESKTOP.value
+            and (step.arguments.get("category") in {"files", "folders"} or step.action in file_tool_actions)
+        )
+        denied = None if tool_gated_file_step else self._policy_denied(step, context)
         if denied:
             return AgentResult(
                 task_id=step.task_id, step_id=step.step_id, agent=step.agent_type,
@@ -69,7 +80,47 @@ class Coordinator:
                 action=step.action,
                 target=step.target,
             )
-            result = agent.run(task)
+            if tool_gated_file_step:
+                result = agent.run(task)
+                if result.output.get("approval_id"):
+                    return AgentResult(
+                        task_id=step.task_id,
+                        step_id=step.step_id,
+                        agent=step.agent_type,
+                        action=step.action,
+                        status=StepStatus.WAITING,
+                        success=False,
+                        error=result.message,
+                        message=result.message,
+                        output=result.output,
+                    )
+            else:
+                gated = run_guarded_sync(
+                    {
+                        "tool": step.action,
+                        "params": {"target": step.target, **step.arguments},
+                    },
+                    "orchestrator",
+                    lambda: agent.run(task),
+                )
+                if gated["status"] != "ok":
+                    waiting = gated["status"] == "needs_approval"
+                    return AgentResult(
+                        task_id=step.task_id,
+                        step_id=step.step_id,
+                        agent=step.agent_type,
+                        action=step.action,
+                        status=StepStatus.WAITING if waiting else StepStatus.FAILED,
+                        success=False,
+                        error=gated.get("summary") or gated.get("error") or gated["status"],
+                        message=gated.get("summary") or gated.get("error") or gated["status"],
+                        output={
+                            key: gated[key]
+                            for key in ("approval_id", "summary")
+                            if key in gated
+                        },
+                    )
+                result = gated["result"]
             output = dict(result.output)
             output.pop("message", None)
             output.pop("success", None)

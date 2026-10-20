@@ -10,6 +10,7 @@ from app.orchestrator.result_manager import ResultManager
 from app.orchestrator.verifier import OrchestrationVerifier
 from app.task.task_models import StructuredTask, TaskExecutionResult, TaskStatus
 from app.task.task_router import TaskRouter
+from app.safety.executor_gate import run_guarded_sync
 
 
 class MultiAgentOrchestrator:
@@ -20,6 +21,44 @@ class MultiAgentOrchestrator:
         self.result_manager = ResultManager()
 
     def run(self, task: StructuredTask) -> TaskExecutionResult:
+        file_actions = {
+            "open_file", "copy_file", "move_file", "rename_file", "delete_file", "search_file",
+            "list_dir", "search_files", "search_in_files", "file_info", "read_file", "create_file",
+            "write_file", "create_docx", "create_xlsx", "open_in_explorer", "bulk_file_operation",
+            "create_folder", "open_folder", "rename_folder", "move_folder", "delete_folder",
+        }
+        has_tool_gated_file_step = task.task_type.value == "multi_step" and any(
+            step.get("category") in {"files", "folders"} or step.get("action") in file_actions
+            for step in task.steps
+        )
+        if has_tool_gated_file_step:
+            return self._run(task)
+        gated = run_guarded_sync(
+            {
+                "tool": task.action or "multi_step",
+                "params": {"target": task.target, "task_type": task.task_type.value},
+            },
+            "orchestrator",
+            lambda: self._run(task),
+        )
+        if gated["status"] == "ok":
+            return gated["result"]
+        output = {"blocked": True, "gate_status": gated["status"]}
+        if gated.get("approval_id"):
+            output["approval_id"] = gated["approval_id"]
+            output["approval_summary"] = gated.get("summary")
+        task.status = TaskStatus.AWAITING_PERMISSION if gated["status"] == "needs_approval" else TaskStatus.BLOCKED
+        return TaskExecutionResult(
+            success=False,
+            verified=False,
+            message=gated.get("summary") or gated.get("error") or gated["status"],
+            status=TaskStatus.AWAITING_PERMISSION if gated["status"] == "needs_approval" else TaskStatus.BLOCKED,
+            agent="orchestrator",
+            task=task,
+            output=output,
+        )
+
+    def _run(self, task: StructuredTask) -> TaskExecutionResult:
         plan = build_plan(task)
         context = ExecutionContext(
             task_id=task.task_id,

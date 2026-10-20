@@ -2,6 +2,7 @@ import inspect
 from typing import Any, Dict
 
 from app.agents.browser.registry import browser_tools
+from app.safety.executor_gate import run_guarded_tool_sync
 
 
 def execute_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
@@ -11,8 +12,12 @@ def execute_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "verified": False, "message": f"Browser action '{action}' is not supported yet."}
     try:
         parameters = [name for name in inspect.signature(tool).parameters]
-        if not parameters:
-            return tool()
-        return tool(plan.get("target", ""))
+        arguments = {} if not parameters else {"target": plan.get("target", "")}
+        return run_guarded_tool_sync(
+            action,
+            arguments,
+            "browser_agent",
+            lambda: tool() if not parameters else tool(plan.get("target", "")),
+        )
     except (OSError, TypeError, ValueError) as error:
         return {"success": False, "verified": False, "message": f"I couldn't complete that browser action: {error}"}

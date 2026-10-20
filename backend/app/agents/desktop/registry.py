@@ -3,11 +3,17 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, Optional
 
 # Applications
-from app.agents.desktop.applications.close_app import close_app
-from app.agents.desktop.applications.find_app import find_app
 from app.agents.desktop.applications.list_apps import list_apps
-from app.agents.desktop.applications.open_app import open_app
 from app.agents.desktop.applications.restart_app import restart_app
+from app.agents.desktop.applications.installed_apps import (
+    close_app,
+    find_app,
+    focus_app,
+    force_close_app,
+    list_installed_apps,
+    list_running_apps,
+    open_app,
+)
 
 # Windows
 from app.agents.desktop.windows.maximize_window import maximize_window
@@ -16,20 +22,34 @@ from app.agents.desktop.windows.move_window import move_window
 from app.agents.desktop.windows.resize_window import resize_window
 from app.agents.desktop.windows.switch_window import switch_window
 
-# Files
-from app.agents.desktop.files.copy_file import copy_file
-from app.agents.desktop.files.delete_file import delete_file
-from app.agents.desktop.files.move_file import move_file
-from app.agents.desktop.files.open_file import open_file
-from app.agents.desktop.files.rename_file import rename_file
-from app.agents.desktop.files.search_file import search_file
-
-# Folders
-from app.agents.desktop.folders.create_folder import create_folder
-from app.agents.desktop.folders.delete_folder import delete_folder
-from app.agents.desktop.folders.move_folder import move_folder
-from app.agents.desktop.folders.open_folder import open_folder
-from app.agents.desktop.folders.rename_folder import rename_folder
+# Files and folders
+from app.agents.desktop.files.file_tools import (
+    bulk_file_operation,
+    copy,
+    copy_file,
+    create_docx,
+    create_file,
+    create_folder,
+    create_xlsx,
+    delete_file,
+    delete_folder,
+    delete,
+    file_info,
+    list_dir,
+    move_file,
+    move_folder,
+    move,
+    open_file,
+    open_folder,
+    open_in_explorer,
+    read_file,
+    rename_file,
+    rename_folder,
+    search_file,
+    search_files,
+    search_in_files,
+    write_file,
+)
 
 # System
 from app.agents.desktop.system.lock import lock
@@ -63,11 +83,15 @@ class DesktopToolRegistry:
             "applications.open_app": open_app,
             "applications.close_app": close_app,
             "applications.restart_app": restart_app,
-            "applications.list_apps": list_apps,
+            "applications.list_apps": list_running_apps,
             "applications.find_app": find_app,
+            "applications.list_installed_apps": list_installed_apps,
+            "applications.force_close_app": force_close_app,
+            "applications.list_running_apps": list_running_apps,
+            "applications.focus_app": focus_app,
 
             # Windows
-            "windows.switch_window": switch_window,
+            "windows.switch_window": focus_app,
             "windows.minimize_window": minimize_window,
             "windows.maximize_window": maximize_window,
             "windows.resize_window": resize_window,
@@ -80,6 +104,20 @@ class DesktopToolRegistry:
             "files.rename_file": rename_file,
             "files.delete_file": delete_file,
             "files.search_file": search_file,
+            "files.list_dir": list_dir,
+            "files.search_files": search_files,
+            "files.search_in_files": search_in_files,
+            "files.file_info": file_info,
+            "files.read_file": read_file,
+            "files.create_file": create_file,
+            "files.write_file": write_file,
+            "files.create_docx": create_docx,
+            "files.create_xlsx": create_xlsx,
+            "files.open_in_explorer": open_in_explorer,
+            "files.bulk_file_operation": bulk_file_operation,
+            "files.copy": copy,
+            "files.move": move,
+            "files.delete": delete,
 
             # Folders
             "folders.create_folder": create_folder,
@@ -87,6 +125,8 @@ class DesktopToolRegistry:
             "folders.rename_folder": rename_folder,
             "folders.move_folder": move_folder,
             "folders.delete_folder": delete_folder,
+            "folders.list_dir": list_dir,
+            "folders.open_in_explorer": open_in_explorer,
 
             # System
             "system.shutdown": shutdown,
@@ -122,6 +162,11 @@ class DesktopToolRegistry:
             "restart_application": "applications.restart_app",
             "list_apps": "applications.list_apps",
             "find_app": "applications.find_app",
+            "list_installed_apps": "applications.list_installed_apps",
+            "find_installed_app": "applications.find_app",
+            "force_close_app": "applications.force_close_app",
+            "list_running_apps": "applications.list_running_apps",
+            "focus_app": "applications.focus_app",
 
             # Windows aliases
             "switch_window": "windows.switch_window",
@@ -137,6 +182,20 @@ class DesktopToolRegistry:
             "rename_file": "files.rename_file",
             "delete_file": "files.delete_file",
             "search_file": "files.search_file",
+            "list_dir": "files.list_dir",
+            "search_files": "files.search_files",
+            "search_in_files": "files.search_in_files",
+            "file_info": "files.file_info",
+            "read_file": "files.read_file",
+            "create_file": "files.create_file",
+            "write_file": "files.write_file",
+            "create_docx": "files.create_docx",
+            "create_xlsx": "files.create_xlsx",
+            "open_in_explorer": "files.open_in_explorer",
+            "bulk_file_operation": "files.bulk_file_operation",
+            "copy": "files.copy",
+            "move": "files.move",
+            "delete": "files.delete",
 
             # Folders aliases
             "create_folder": "folders.create_folder",

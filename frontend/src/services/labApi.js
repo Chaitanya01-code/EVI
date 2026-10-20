@@ -35,6 +35,7 @@ export async function submitChat(payload) {
 export function connectLabEvents(onEvent, onError) {
   const events = new EventSource(`${API_BASE_URL}/api/lab/events`);
   const eventNames = [
+    'action_attempted', 'intent_classified',
     'task_created', 'task_started', 'task_completed', 'task_failed',
     'task_planning', 'inquiry_started', 'question_generated', 'research_started',
     'research_completed', 'decision_required', 'decision_resolved', 'agent_selected',

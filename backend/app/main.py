@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import logging
 import os
 
@@ -8,6 +9,14 @@ from app.database.connection import close_pool
 from app.database.store import initialize_database_async
 from app.phase3.inquiry.inquiry_engine import InquiryEngine
 from app.phase4.computer.controller import DesktopAutomationController
+from app.phase4.computer.control_indicator import ControlIndicator
+from app.phase4.computer.kill_switch import kill_switch
+from app.safety.executor_gate import (
+    get_kill_switch_status,
+    guarded_execute,
+    resolve_approval,
+    set_kill_switch,
+)
 from app.voice.speech_to_text import stt_router
 from app.api.routes.lab import lab_router
 from app.work.api import work_router
@@ -30,6 +39,54 @@ app.include_router(work_router, prefix="/api")
 
 _inquiry_engine = InquiryEngine()
 _computer_controller = DesktopAutomationController()
+_control_indicator = ControlIndicator(kill_switch.stop)
+kill_switch.set_indicator(_control_indicator.show, _control_indicator.hide)
+
+
+class ApprovalRequest(BaseModel):
+    approve: bool
+
+
+class KillSwitchRequest(BaseModel):
+    enabled: bool
+
+
+@app.post("/api/approvals/{approval_id}")
+async def submit_approval(approval_id: str, payload: ApprovalRequest):
+    result = await resolve_approval(approval_id, payload.approve)
+    if result["status"] == "not_found":
+        raise HTTPException(status_code=404, detail="Approval was not found.")
+    if result["status"] == "expired":
+        raise HTTPException(status_code=410, detail="Approval has expired.")
+    return result
+
+
+@app.get("/api/kill-switch")
+def get_action_kill_switch():
+    return get_kill_switch_status()
+
+
+@app.post("/api/kill-switch")
+def update_action_kill_switch(payload: KillSwitchRequest):
+    return set_kill_switch(payload.enabled)
+
+
+@app.get("/api/computer/control/status")
+def computer_control_status():
+    return kill_switch.status()
+
+
+@app.post("/api/computer/control/enable")
+def computer_control_enable():
+    status = kill_switch.enable()
+    if not status["enabled"]:
+        raise HTTPException(status_code=503, detail=status)
+    return status
+
+
+@app.post("/api/computer/control/stop")
+def computer_control_stop():
+    return kill_switch.stop("Computer control was stopped by the user.")
 
 
 @app.get("/api/inquiry/status")
@@ -77,23 +134,40 @@ def computer_applications():
 
 
 @app.post("/api/computer/inspect")
-def computer_inspect(payload: dict):
+async def computer_inspect(payload: dict):
     app_name = str(payload.get("application") or "Notepad")
-    return _computer_controller.inspect_window(app_name)
+    result = await guarded_execute(
+        {"tool": "computer.inspect_window", "params": {"application": app_name}},
+        "computer_api",
+        lambda: _computer_controller.inspect_window(app_name),
+    )
+    return result.get("result") if result["status"] == "ok" else result
 
 
 @app.post("/api/computer/interact")
-def computer_interact(payload: dict):
+async def computer_interact(payload: dict):
     action = str(payload.get("action") or "click")
     app_name = str(payload.get("application") or "Notepad")
     target = str(payload.get("target") or "main")
     if action == "type":
-        return _computer_controller.type_text(app_name, target, str(payload.get("text") or ""))
-    return _computer_controller.click(app_name, target)
+        params = {"application": app_name, "target": target, "text": str(payload.get("text") or "")}
+        run = lambda: _computer_controller.type_text(app_name, target, params["text"])
+        tool = "computer.type_text"
+    else:
+        params = {"application": app_name, "target": target}
+        run = lambda: _computer_controller.click(app_name, target)
+        tool = "computer.click"
+    result = await guarded_execute({"tool": tool, "params": params}, "computer_api", run)
+    return result.get("result") if result["status"] == "ok" else result
 
 
 @app.on_event("startup")
 async def startup_database():
+    if not kill_switch.start_listener():
+        logging.getLogger(__name__).error(
+            "Computer control remains disabled: %s",
+            kill_switch.status()["reason"],
+        )
     try:
         await initialize_database_async()
     except Exception:
@@ -103,6 +177,7 @@ async def startup_database():
 
 @app.on_event("shutdown")
 async def shutdown_database():
+    kill_switch.shutdown()
     close_pool()
 
 @app.get("/")

@@ -6,6 +6,7 @@ import time
 from typing import Any, Dict, Optional
 
 from app.phase4.computer.controller import DesktopAutomationController
+from app.safety.executor_gate import run_guarded_tool_sync
 
 
 _controller = DesktopAutomationController()
@@ -16,5 +17,16 @@ def mouse_click(button: str = "left", double: bool = False, x: Optional[int] = N
     if x is None or y is None:
         return {"success": False, "verified": False, "message": "x and y coordinates are required."}
     if double:
-        return _controller.double_click(x, y) if button.lower() == "left" else {"success": False, "verified": False, "message": "Double-click only supports the left button."}
-    return _controller.click(x, y, button)
+        if button.lower() != "left":
+            return {"success": False, "verified": False, "message": "Double-click only supports the left button."}
+        tool = "computer.double_click"
+        run = lambda: _controller.double_click(x, y)
+    else:
+        tool = "computer.click"
+        run = lambda: _controller.click(x, y, button)
+    return run_guarded_tool_sync(
+        tool,
+        {"button": button, "double": double, "x": x, "y": y},
+        "desktop_agent",
+        run,
+    )

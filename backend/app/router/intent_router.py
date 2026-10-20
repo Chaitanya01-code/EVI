@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections import defaultdict
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from app.agents.conversation_agent import generate_conversation_response
@@ -28,7 +30,19 @@ _task_manager = TaskManager(TaskRouter(build_default_registry()), event_callback
 
 async def _route_response(context: WorkingContext, classification: IntentResult):
     loop = asyncio.get_running_loop()
-    if classification.mode == "conversation":
+    is_running_apps_request = bool(re.fullmatch(
+        r"\s*(?:(?:what|which)\s+(?:apps|applications)\s+(?:are\s+)?running|"
+        r"(?:show|list)\s+(?:me\s+)?(?:the\s+)?running\s+(?:apps|applications))\s*[?.!]*\s*",
+        context.transcript,
+        flags=re.IGNORECASE,
+    ))
+    is_file_request = bool(re.match(
+        r"\s*(?:please\s+)?(?:find|locate|search for|summari[sz]e|create\s+(?:a\s+)?folder|"
+        r"(?:copy|move|delete|rename)\s+all|open|read|copy|move|rename|delete)\b",
+        context.transcript,
+        flags=re.IGNORECASE,
+    ))
+    if classification.mode == "conversation" and not (is_running_apps_request or is_file_request):
         response = await loop.run_in_executor(
             None,
             generate_conversation_response,
@@ -37,9 +51,9 @@ async def _route_response(context: WorkingContext, classification: IntentResult)
             context.as_prompt_context(),
         )
         return response, None
-    if classification.mode == "unclear":
+    if classification.mode == "unclear" and not (is_running_apps_request or is_file_request):
         return "I wasn't sure what you meant. Could you rephrase that or tell me what you want me to do?", None
-    if classification.mode == "task":
+    if classification.mode == "task" or is_running_apps_request or is_file_request:
         task = await loop.run_in_executor(
             None,
             build_structured_task,
@@ -130,6 +144,32 @@ async def _route_response(context: WorkingContext, classification: IntentResult)
                 completed_at=step.get("completed_at"),
             )))
 
+        if result.success and task.action == "read_file" and re.search(r"\bsummari[sz]e\b", context.transcript, re.IGNORECASE):
+            document_text = result.output.get("text")
+            if isinstance(document_text, str) and document_text:
+                summary_context = context.as_prompt_context()
+                summary_context["document_text"] = document_text
+                response = await loop.run_in_executor(
+                    None,
+                    generate_response,
+                    "Summarize the document text included in the context.",
+                    classification,
+                    summary_context,
+                )
+                return response, result
+        if result.success and task.action == "list_dir" and re.search(r"\bsummari[sz]e\b", context.transcript, re.IGNORECASE):
+            documents = [
+                item.get("path", "")
+                for item in result.output.get("items", [])
+                if item.get("type") == "file" and Path(item.get("name", "")).suffix.casefold() in {
+                    ".doc", ".docx", ".pdf", ".xlsx", ".xls", ".pptx", ".txt", ".md",
+                }
+            ]
+            choices = "\n".join(f"- {path}" for path in documents[:10])
+            message = "Which document should I summarize? Please provide its name or path."
+            if choices:
+                message += "\nI found these documents:\n" + choices
+            return message, result
         return result.message, result
     return await loop.run_in_executor(
         None, generate_response, context.transcript, classification, context.as_prompt_context()

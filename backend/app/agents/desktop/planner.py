@@ -20,6 +20,24 @@ class DesktopPlan(BaseModel):
     location: str = Field(default="")
     source: str = Field(default="")
     destination: str = Field(default="")
+    path: str = Field(default="")
+    root: str = Field(default="")
+    name_glob: str = Field(default="")
+    extension: str = Field(default="")
+    modified_after: str = Field(default="")
+    limit: int = Field(default=200)
+    depth: int = Field(default=1)
+    text: str = Field(default="")
+    extensions: list[str] = Field(default_factory=list)
+    max_chars: int = Field(default=20000)
+    content: str = Field(default="")
+    mode: str = Field(default="overwrite")
+    overwrite: bool = Field(default=False)
+    title: str = Field(default="")
+    paragraphs: list[str] = Field(default_factory=list)
+    rows: list[list[Any]] = Field(default_factory=list)
+    op: str = Field(default="")
+    pattern: str = Field(default="")
     command: str = Field(default="")
     confirm: bool = Field(default=False)
 
@@ -30,8 +48,8 @@ You are EVI's Desktop Task Planner. Translate the user's natural language reques
 Available categories and actions:
 - applications: open_app, close_app, restart_app, list_apps, find_app
 - windows: switch_window, minimize_window, maximize_window, resize_window, move_window
-- files: open_file, copy_file, move_file, rename_file, delete_file, search_file
-- folders: create_folder, open_folder, rename_folder, move_folder, delete_folder
+- files: open_file, open_in_explorer, copy_file, move_file, rename_file, delete_file, search_file, list_dir, search_files, search_in_files, file_info, read_file, create_file, write_file, create_docx, create_xlsx, bulk_file_operation
+- folders: create_folder, open_folder, rename_folder, move_folder, delete_folder, list_dir
 - system: shutdown, restart, lock, sleep
 - input: mouse_click, mouse_move, type_text, press_key
 - screen: screenshot, inspect_screen, find_ui_element
@@ -42,6 +60,15 @@ Parameters convention:
 - For files.rename_file: {"source": "...", "destination": "..."}
 - For files.copy_file or move_file: {"source": "...", "destination": "..."}
 - For files.open_file or delete_file: {"file_path": "..."}
+- For files.list_dir: {"path": "...", "depth": 1}
+- For files.search_files: {"root": "...", "name_glob": "*", "extension": "pdf", "modified_after": "...", "limit": 200}
+- For files.search_in_files: {"root": "...", "text": "...", "extensions": [".txt"], "limit": 200}
+- For files.file_info or files.read_file: {"path": "..."}
+- For files.create_file or files.write_file: {"path": "...", "content": "...", "mode": "overwrite", "overwrite": false}
+- For files.create_docx: {"path": "...", "title": "...", "paragraphs": ["..."]}
+- For files.create_xlsx: {"path": "...", "rows": [["..."]]}
+- For files.bulk_file_operation: {"op": "copy|move|delete|rename", "root": "...", "pattern": "...", "destination": "..."}
+- For files.open_in_explorer: {"path": "..."}
 - For windows.resize_window: {"width": 1024, "height": 768}
 - For input.mouse_move: {"x": 100, "y": 100}
 - For input.type_text: {"text": "..."}
@@ -170,6 +197,24 @@ def build_plan(task: StructuredTask) -> Dict[str, Any]:
                 "location": plan.location,
                 "source": plan.source,
                 "destination": plan.destination,
+                "path": plan.path,
+                "root": plan.root,
+                "name_glob": plan.name_glob,
+                "extension": plan.extension,
+                "modified_after": plan.modified_after,
+                "limit": plan.limit,
+                "depth": plan.depth,
+                "text": plan.text,
+                "extensions": plan.extensions,
+                "max_chars": plan.max_chars,
+                "content": plan.content,
+                "mode": plan.mode,
+                "overwrite": plan.overwrite,
+                "title": plan.title,
+                "paragraphs": plan.paragraphs,
+                "rows": plan.rows,
+                "op": plan.op,
+                "pattern": plan.pattern,
                 "command": plan.command,
                 "confirm": plan.confirm,
             }.items() if v

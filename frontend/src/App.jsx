@@ -107,6 +107,8 @@ function App() {
   const [textInput, setTextInput] = useState('');
   const [processing, setProcessing] = useState(false);
   const [backgroundEnabled, setBackgroundEnabled] = useState(true);
+  const [killSwitchEnabled, setKillSwitchEnabled] = useState(false);
+  const [killSwitchUpdating, setKillSwitchUpdating] = useState(false);
   const [labOpen, setLabOpen] = useState(false);
   const [labTab, setLabTab] = useState('overview');
   const [activityEvents, setActivityEvents] = useState([]);
@@ -143,6 +145,16 @@ function App() {
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/api/kill-switch`)
+      .then(response => {
+        if (!response.ok) throw new Error('Unable to read kill-switch state');
+        return response.json();
+      })
+      .then(state => setKillSwitchEnabled(Boolean(state.enabled)))
+      .catch(() => setError('Unable to read the action kill-switch state.'));
   }, []);
 
   useEffect(() => () => stopListening(), []);
@@ -197,6 +209,25 @@ function App() {
     audioContextRef.current = null;
     socketRef.current = null;
     setListening(false);
+  };
+
+  const toggleKillSwitch = async () => {
+    setKillSwitchUpdating(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/kill-switch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !killSwitchEnabled }),
+      });
+      if (!response.ok) throw new Error('Unable to update kill-switch state');
+      const state = await response.json();
+      setKillSwitchEnabled(Boolean(state.enabled));
+      setError('');
+    } catch {
+      setError('Unable to update the action kill switch.');
+    } finally {
+      setKillSwitchUpdating(false);
+    }
   };
 
   const startListening = async () => {
@@ -319,6 +350,19 @@ function App() {
 
         {/* Top-Right Header Controls: EVI Lab & Background Toggle */}
         <div className="evi-top-bar">
+          <div className="evi-kill-switch">
+            <button
+              type="button"
+              className={`evi-stop-btn ${killSwitchEnabled ? 'evi-stop-active' : ''}`}
+              onClick={toggleKillSwitch}
+              disabled={killSwitchUpdating}
+              aria-pressed={killSwitchEnabled}
+              title={killSwitchEnabled ? 'Resume actions' : 'Stop all actions'}
+            >
+              {killSwitchEnabled ? 'RESUME' : 'STOP'}
+            </button>
+            <span role="status">{killSwitchEnabled ? 'STOPPED' : 'ACTIVE'}</span>
+          </div>
           <button 
             type="button"
             className="evi-lab-btn" 

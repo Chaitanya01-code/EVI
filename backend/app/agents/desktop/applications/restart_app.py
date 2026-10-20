@@ -3,8 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any, Dict
 
-from app.agents.desktop.applications.close_app import close_app
-from app.agents.desktop.applications.open_app import open_app
+from app.agents.desktop.applications.installed_apps import close_app, open_app
 
 
 def restart_app(app_name: str) -> Dict[str, Any]:
